@@ -1,4 +1,4 @@
-function checkAccess() {
+function checkAccess(event) {
     if (event.key != 'Enter') { return; }
     
     let answer = document.getElementById("inputer").value;
