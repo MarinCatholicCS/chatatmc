@@ -6,6 +6,7 @@ function checkAcess() {
 
     if (answer && answer.toLowerCase() === "adib") {
         document.getElementById("content").style.display = "block";
+        document.getElementById("authPage").style.display = "none";
         document.getElementById("MoAdib").style.display = "none";
     } else {
         document.body.innerHTML = "<h1>Access Denied</h1>";
