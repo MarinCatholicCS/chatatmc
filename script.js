@@ -5,7 +5,10 @@ function checkAccess(event) {
 
     if (answer && answer.toLowerCase() === "adib") {
         document.getElementById("hiddenContent").style.display = "block";
-        document.getElementsByClassName("auth").remove();
+        let auths = document.getElementsByClassName("auth");
+        auths.forEach(element => {
+            element.remove();
+        });
     } else {
         document.body.innerHTML = "<h1>Access Denied</h1>";
     }
