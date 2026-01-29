@@ -1,6 +1,7 @@
 //const answer = prompt("What his name is?");
 
 function checkAcess() {
+    if (event.key === ' ') { return; }
     let answer = document.getElementById("inputer").innerHTML;
 
     if (answer && answer.toLowerCase() === "adib") {
