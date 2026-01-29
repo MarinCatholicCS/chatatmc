@@ -1,13 +1,11 @@
-//const answer = prompt("What his name is?");
-
-function checkAcess() {
-    if (event.key === ' ') { return; }
-    let answer = document.getElementById("inputer").innerHTML;
+function checkAccess() {
+    if (event.key != 'Enter') { return; }
+    
+    let answer = document.getElementById("inputer").value;
 
     if (answer && answer.toLowerCase() === "adib") {
-        document.getElementById("content").style.display = "block";
-        document.getElementById("authPage").style.display = "none";
-        document.getElementById("MoAdib").style.display = "none";
+        document.getElementById("hiddenContent").style.display = "block";
+        document.getElementsByClassName("auth").remove();
     } else {
         document.body.innerHTML = "<h1>Access Denied</h1>";
     }

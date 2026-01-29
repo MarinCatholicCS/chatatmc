@@ -3,15 +3,17 @@
 <head>
     <title>Authorization Needed</title>
 </head>
-<body id="authPage">
-    <img src="momath.webp" id="MoAdib">
-    <input type="text" onkeydown="checkAccess()" id="inputer">
-</body>
-<body style="display:none" id="content">
+<body>
+    <div class="auth">
+        <img src="momath.webp" id="MoAdib">
+        <h2>What his name is?</h2>
+        <input type="text" onkeydown="checkAccess(event)" id="inputer">
+    </div>
     <!-- can see page after ts -->
-    <h1>Welcome to the protected page</h1>
+    <div style = "display:none;" id="hiddenContent">
+      <h1>Welcome to the protected page</h1>
+    </div>
 <script src="script.js"></script>
 </body>
-
 
 </html>
