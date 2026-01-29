@@ -6,6 +6,7 @@ function checkAccess(event) {
     if (answer && answer.toLowerCase() === "adib") {
         console.log("running redirection");
         window.location.href = "chat/chat.html";
+        document.getElementById("inputer").remove();
         console.log("redirecting");
     } else {
         document.body.innerHTML = "<h1>Access Denied</h1>";
