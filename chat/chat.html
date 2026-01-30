@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Anonymous Matcher</title>
+  <title>MC Wildchat</title>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -21,14 +21,13 @@
 
     // Firebase Configuration
     const firebaseConfig = {
-        apiKey: "AIzaSyDvT_GPef-lLPD2X86xM2MLSTl7s7OQfKg",
-        authDomain: "chat-together-mc.firebaseapp.com",
-        databaseURL: "https://chat-together-mc-default-rtdb.firebaseio.com",
-        projectId: "chat-together-mc",
-        storageBucket: "chat-together-mc.firebasestorage.app",
-        messagingSenderId: "647441407343",
-        appId: "1:647441407343:web:b76cf33d52fc01b8631c9a",
-        measurementId: "G-07E1B315VT"
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT_ID.appspot.com",
+      messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+      appId: "YOUR_APP_ID"
     };
 
     // Initialize Firebase
@@ -266,100 +265,111 @@
       }, [status]);
 
       return (
-        <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 p-4">
-          <div className="max-w-4xl mx-auto">
-            {/* Header */}
-            <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Users className="w-8 h-8 text-purple-600" />
-                  <h1 className="text-2xl font-bold text-gray-800">Anonymous Matcher</h1>
+        <div className="min-h-screen bg-white">
+          {/* Header */}
+          <div className="bg-blue-600 shadow-md">
+            <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="bg-white rounded-lg p-2">
+                  <MessageCircle className="w-6 h-6 text-blue-600" />
                 </div>
-                {status !== 'disconnected' && (
-                  <button
-                    onClick={leaveSession}
-                    className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    Leave
-                  </button>
-                )}
+                <div>
+                  <h1 className="text-2xl font-bold text-white">MC Wildchat</h1>
+                  <p className="text-blue-100 text-sm">Talk to strangers!</p>
+                </div>
               </div>
-              <p className="text-gray-600 mt-2">Connect with random people anonymously</p>
+              {status !== 'disconnected' && (
+                <button
+                  onClick={leaveSession}
+                  className="flex items-center gap-2 px-4 py-2 bg-white text-blue-600 rounded-lg hover:bg-blue-50 transition-colors font-semibold"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Disconnect
+                </button>
+              )}
             </div>
+          </div>
 
-            {error && (
-              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-6">
+          {error && (
+            <div className="max-w-6xl mx-auto px-4 mt-4">
+              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
                 {error}
+              </div>
+            </div>
+          )}
+
+          {/* Main Content */}
+          <div className="max-w-6xl mx-auto px-4 py-6">
+            {status === 'disconnected' && (
+              <div className="text-center py-16">
+                <div className="mb-8">
+                  <div className="inline-block bg-blue-100 rounded-full p-6 mb-4">
+                    <Users className="w-16 h-16 text-blue-600" />
+                  </div>
+                  <h2 className="text-3xl font-bold text-gray-800 mb-2">MC Wildchat</h2>
+                  <p className="text-gray-600 text-lg">Connect with random Marin Catholic students anonymously</p>
+                </div>
+                
+                <button
+                  onClick={joinQueue}
+                  className="px-12 py-4 bg-blue-600 text-white text-xl rounded-lg hover:bg-blue-700 transition-colors font-bold shadow-lg"
+                >
+                  Start Chatting
+                </button>
+                
+                <div className="mt-8 text-gray-500 text-sm">
+                  <p>Click "Start Chatting" to be matched with a random stranger</p>
+                </div>
               </div>
             )}
 
-            {/* Status Display */}
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              {status === 'disconnected' && (
-                <div className="text-center py-12">
-                  <UserCheck className="w-16 h-16 text-purple-600 mx-auto mb-4" />
-                  <h2 className="text-2xl font-semibold text-gray-800 mb-4">Ready to Connect?</h2>
-                  <p className="text-gray-600 mb-6">Click below to join and get matched with someone anonymously</p>
-                  <button
-                    onClick={joinQueue}
-                    className="px-8 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-semibold"
-                  >
-                    Join Queue
-                  </button>
+            {status === 'waiting' && (
+              <div className="text-center py-16">
+                <div className="mb-6">
+                  <Clock className="w-20 h-20 text-blue-600 mx-auto mb-4 animate-pulse" />
                 </div>
-              )}
-
-              {status === 'waiting' && (
-                <div className="text-center py-12">
-                  <Clock className="w-16 h-16 text-blue-600 mx-auto mb-4 animate-pulse" />
-                  <h2 className="text-2xl font-semibold text-gray-800 mb-4">Waiting for Match...</h2>
-                  <p className="text-gray-600 mb-2">Looking for someone to connect with</p>
-                  <p className="text-sm text-gray-500">
-                    {waitingCount > 1 ? `${waitingCount} people waiting` : 'You are next in line'}
-                  </p>
-                  <div className="mt-6">
-                    <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
-                  </div>
-                </div>
-              )}
-
-              {status === 'matched' && (
-                <div>
-                  <div className="flex items-center justify-between mb-6 pb-4 border-b">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-                      <span className="text-green-600 font-semibold">Connected</span>
+                <h2 className="text-2xl font-semibold text-gray-800 mb-2">Looking for a stranger...</h2>
+                <p className="text-gray-600">
+                  {waitingCount > 1 ? `${waitingCount} users online` : 'Waiting for someone to connect'}
+                </p>
+                <div className="mt-8">
+                  <div className="inline-block">
+                    <div className="flex gap-2">
+                      <div className="w-3 h-3 bg-blue-600 rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
+                      <div className="w-3 h-3 bg-blue-600 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                      <div className="w-3 h-3 bg-blue-600 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
                     </div>
-                    <span className="text-sm text-gray-500">Chatting with a stranger</span>
                   </div>
+                </div>
+              </div>
+            )}
 
-                  {/* Messages */}
-                  <div className="bg-gray-50 rounded-lg p-4 mb-4 h-96 overflow-y-auto">
+            {status === 'matched' && (
+              <div>
+                <div className="bg-green-50 border-l-4 border-green-500 p-4 mb-6">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                    <span className="text-green-700 font-semibold">You're now chatting with a random stranger</span>
+                  </div>
+                </div>
+
+                {/* Chat Box */}
+                <div className="border-2 border-gray-300 rounded-lg overflow-hidden bg-white">
+                  {/* Messages Area */}
+                  <div className="h-96 overflow-y-auto p-4 bg-gray-50">
                     {messages.length === 0 ? (
                       <div className="text-center text-gray-400 py-12">
                         <MessageCircle className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                        <p>No messages yet. Say hi!</p>
+                        <p>Say hi to start the conversation!</p>
                       </div>
                     ) : (
-                      <div className="space-y-3">
+                      <div className="space-y-2">
                         {messages.map((msg) => (
-                          <div
-                            key={msg.id}
-                            className={`flex ${msg.sender === userId ? 'justify-end' : 'justify-start'}`}
-                          >
-                            <div
-                              className={`max-w-xs px-4 py-2 rounded-lg ${
-                                msg.sender === userId
-                                  ? 'bg-purple-600 text-white'
-                                  : 'bg-white text-gray-800 border border-gray-200'
-                              }`}
-                            >
-                              <p>{msg.text}</p>
-                              <span className="text-xs opacity-70 mt-1 block">
-                                {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}
-                              </span>
-                            </div>
+                          <div key={msg.id} className="text-sm">
+                            <span className={`font-bold ${msg.sender === userId ? 'text-blue-600' : 'text-red-600'}`}>
+                              {msg.sender === userId ? 'You' : 'Stranger'}:
+                            </span>
+                            <span className="text-gray-800 ml-2">{msg.text}</span>
                           </div>
                         ))}
                         <div ref={messagesEndRef} />
@@ -367,34 +377,39 @@
                     )}
                   </div>
 
-                  {/* Message Input */}
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={messageInput}
-                      onChange={(e) => setMessageInput(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-                      placeholder="Type a message..."
-                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-600"
-                    />
-                    <button
-                      onClick={sendMessage}
-                      className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-semibold"
-                    >
-                      Send
-                    </button>
+                  {/* Input Area */}
+                  <div className="border-t-2 border-gray-300 bg-white p-4">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={messageInput}
+                        onChange={(e) => setMessageInput(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                        placeholder="Type your message here..."
+                        className="flex-1 px-4 py-3 border-2 border-gray-300 rounded focus:outline-none focus:border-blue-600 text-base"
+                      />
+                      <button
+                        onClick={sendMessage}
+                        className="px-8 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors font-semibold"
+                      >
+                        Send
+                      </button>
+                    </div>
                   </div>
                 </div>
-              )}
-            </div>
 
-            {/* Info */}
-            <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <p className="text-sm text-blue-800">
-                <strong>Note:</strong> This app uses Firebase for real-time matching and messaging. 
-                All connections are anonymous and temporary.
-              </p>
-            </div>
+                {/* Bottom Info */}
+                <div className="mt-4 text-center text-gray-500 text-sm">
+                  <p>Click "Disconnect" to end this chat and find a new stranger</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="max-w-6xl mx-auto px-4 py-8 text-center text-gray-400 text-xs">
+            <p>MC Wildchat • Anonymous chatting for Marin Catholic students</p>
+            <p className="mt-2">Your chats are anonymous and temporary</p>
           </div>
         </div>
       );
