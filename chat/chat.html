@@ -105,20 +105,24 @@
           setError(null);
           const newUserId = generateUserId();
           setUserId(newUserId);
+          console.log('My User ID:', newUserId);
 
           // Add to waiting pool
           await database.ref(`waiting/${newUserId}`).set({
             timestamp: firebase.database.ServerValue.TIMESTAMP,
             status: 'waiting'
           });
+          console.log('Added to waiting pool');
 
           setStatus('waiting');
           
-          // Listen for match
+          // Listen for match BEFORE attempting to match
           listenForMatch(newUserId);
           
-          // Try to match immediately
-          attemptMatching(newUserId);
+          // Small delay to ensure listener is set up
+          setTimeout(() => {
+            attemptMatching(newUserId);
+          }, 500);
         } catch (err) {
           setError('Failed to join queue. Please try again.');
           console.error('Join queue error:', err);
@@ -126,17 +130,22 @@
       };
 
       const listenForMatch = (currentUserId) => {
+        console.log('Setting up match listener for:', currentUserId);
         // Listen for sessions that include us
         const sessionsRef = database.ref('sessions');
         const listener = sessionsRef.on('child_added', (snapshot) => {
           const session = snapshot.val();
           const sid = snapshot.key;
+          console.log('Session created:', sid, session);
           
           if (session.user1 === currentUserId || session.user2 === currentUserId) {
+            console.log('I am in this session! Moving to matched state');
             setSessionId(sid);
             setStatus('matched');
             sessionsRef.off('child_added', listener);
             listenForMessages(sid);
+          } else {
+            console.log('This session is not for me');
           }
         });
 
@@ -145,14 +154,18 @@
 
       const attemptMatching = async (currentUserId) => {
         try {
+          console.log('Attempting to match for:', currentUserId);
           const waitingSnapshot = await database.ref('waiting').once('value');
           const waiting = waitingSnapshot.val() || {};
+          console.log('Users in waiting pool:', Object.keys(waiting));
           
           const otherUsers = Object.keys(waiting).filter(id => id !== currentUserId);
+          console.log('Other users available:', otherUsers);
           
           if (otherUsers.length > 0) {
             const partnerId = otherUsers[0];
             const newSessionId = database.ref('sessions').push().key;
+            console.log('Creating session:', newSessionId, 'between', currentUserId, 'and', partnerId);
             
             const session = {
               user1: currentUserId,
@@ -167,7 +180,9 @@
               database.ref(`waiting/${currentUserId}`).remove(),
               database.ref(`waiting/${partnerId}`).remove()
             ]);
+            console.log('Session created and users removed from waiting');
           } else {
+            console.log('No other users to match with');
             // Count waiting users
             updateWaitingCount();
           }
