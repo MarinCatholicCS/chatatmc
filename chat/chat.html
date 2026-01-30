@@ -4,14 +4,394 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Anonymous Matcher</title>
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
 </head>
 <body>
   <div id="root"></div>
 
-  <script type="text/babel" src="chat.js"></script>
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // Firebase Configuration
+    const firebaseConfig = {
+        apiKey: "AIzaSyDvT_GPef-lLPD2X86xM2MLSTl7s7OQfKg",
+        authDomain: "chat-together-mc.firebaseapp.com",
+        databaseURL: "https://chat-together-mc-default-rtdb.firebaseio.com",
+        projectId: "chat-together-mc",
+        storageBucket: "chat-together-mc.firebasestorage.app",
+        messagingSenderId: "647441407343",
+        appId: "1:647441407343:web:b76cf33d52fc01b8631c9a",
+        measurementId: "G-07E1B315VT"
+    };
+
+    // Initialize Firebase
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    const database = firebase.database();
+
+    // Icons
+    const Users = ({ className }) => (
+      <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+      </svg>
+    );
+
+    const MessageCircle = ({ className }) => (
+      <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+      </svg>
+    );
+
+    const UserCheck = ({ className }) => (
+      <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+      </svg>
+    );
+
+    const Clock = ({ className }) => (
+      <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    );
+
+    const LogOut = ({ className }) => (
+      <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+      </svg>
+    );
+
+    function AnonymousMatcher() {
+      const [status, setStatus] = useState('disconnected');
+      const [userId, setUserId] = useState(null);
+      const [sessionId, setSessionId] = useState(null);
+      const [messages, setMessages] = useState([]);
+      const [messageInput, setMessageInput] = useState('');
+      const [waitingCount, setWaitingCount] = useState(0);
+      const [error, setError] = useState(null);
+      const messagesEndRef = useRef(null);
+      const listenerRef = useRef(null);
+
+      const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      };
+
+      useEffect(() => {
+        scrollToBottom();
+      }, [messages]);
+
+      // Cleanup on unmount
+      useEffect(() => {
+        return () => {
+          if (listenerRef.current) {
+            listenerRef.current();
+          }
+        };
+      }, []);
+
+      const generateUserId = () => {
+        return 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      };
+
+      const joinQueue = async () => {
+        try {
+          setError(null);
+          const newUserId = generateUserId();
+          setUserId(newUserId);
+
+          // Add to waiting pool
+          await database.ref(`waiting/${newUserId}`).set({
+            timestamp: firebase.database.ServerValue.TIMESTAMP,
+            status: 'waiting'
+          });
+
+          setStatus('waiting');
+          
+          // Listen for match
+          listenForMatch(newUserId);
+          
+          // Try to match immediately
+          attemptMatching(newUserId);
+        } catch (err) {
+          setError('Failed to join queue. Please try again.');
+          console.error('Join queue error:', err);
+        }
+      };
+
+      const listenForMatch = (currentUserId) => {
+        // Listen for when we're removed from waiting (matched)
+        const waitingRef = database.ref(`waiting/${currentUserId}`);
+        const listener = waitingRef.on('value', async (snapshot) => {
+          if (!snapshot.exists() && status === 'waiting') {
+            // We've been matched! Find our session
+            const sessionsSnapshot = await database.ref('sessions').once('value');
+            const sessions = sessionsSnapshot.val() || {};
+            
+            for (const [sid, session] of Object.entries(sessions)) {
+              if (session.user1 === currentUserId || session.user2 === currentUserId) {
+                setSessionId(sid);
+                setStatus('matched');
+                waitingRef.off('value', listener);
+                listenForMessages(sid);
+                return;
+              }
+            }
+          }
+        });
+
+        listenerRef.current = () => waitingRef.off('value', listener);
+      };
+
+      const attemptMatching = async (currentUserId) => {
+        try {
+          const waitingSnapshot = await database.ref('waiting').once('value');
+          const waiting = waitingSnapshot.val() || {};
+          
+          const otherUsers = Object.keys(waiting).filter(id => id !== currentUserId);
+          
+          if (otherUsers.length > 0) {
+            const partnerId = otherUsers[0];
+            const newSessionId = database.ref('sessions').push().key;
+            
+            const session = {
+              user1: currentUserId,
+              user2: partnerId,
+              createdAt: firebase.database.ServerValue.TIMESTAMP,
+              messages: {}
+            };
+
+            // Create session and remove both from waiting
+            await Promise.all([
+              database.ref(`sessions/${newSessionId}`).set(session),
+              database.ref(`waiting/${currentUserId}`).remove(),
+              database.ref(`waiting/${partnerId}`).remove()
+            ]);
+          } else {
+            // Count waiting users
+            updateWaitingCount();
+          }
+        } catch (err) {
+          console.error('Matching error:', err);
+        }
+      };
+
+      const updateWaitingCount = async () => {
+        try {
+          const snapshot = await database.ref('waiting').once('value');
+          const waiting = snapshot.val() || {};
+          setWaitingCount(Object.keys(waiting).length);
+        } catch (err) {
+          console.error('Count error:', err);
+        }
+      };
+
+      const listenForMessages = (sid) => {
+        const messagesRef = database.ref(`sessions/${sid}/messages`);
+        const listener = messagesRef.on('value', (snapshot) => {
+          const messagesData = snapshot.val() || {};
+          const messagesList = Object.entries(messagesData).map(([id, msg]) => ({
+            id,
+            ...msg
+          })).sort((a, b) => a.timestamp - b.timestamp);
+          setMessages(messagesList);
+        });
+
+        listenerRef.current = () => messagesRef.off('value', listener);
+      };
+
+      const sendMessage = async () => {
+        if (!messageInput.trim() || !sessionId) return;
+
+        try {
+          const newMessageRef = database.ref(`sessions/${sessionId}/messages`).push();
+          await newMessageRef.set({
+            sender: userId,
+            text: messageInput,
+            timestamp: firebase.database.ServerValue.TIMESTAMP
+          });
+          
+          setMessageInput('');
+        } catch (err) {
+          setError('Failed to send message. Please try again.');
+          console.error('Send message error:', err);
+        }
+      };
+
+      const leaveSession = async () => {
+        try {
+          if (listenerRef.current) {
+            listenerRef.current();
+          }
+
+          if (status === 'waiting' && userId) {
+            await database.ref(`waiting/${userId}`).remove();
+          }
+          
+          if (status === 'matched' && sessionId) {
+            await database.ref(`sessions/${sessionId}`).remove();
+          }
+          
+          setStatus('disconnected');
+          setUserId(null);
+          setSessionId(null);
+          setMessages([]);
+          setError(null);
+        } catch (err) {
+          console.error('Leave session error:', err);
+        }
+      };
+
+      // Listen for waiting count updates
+      useEffect(() => {
+        if (status === 'waiting') {
+          const interval = setInterval(updateWaitingCount, 3000);
+          return () => clearInterval(interval);
+        }
+      }, [status]);
+
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 p-4">
+          <div className="max-w-4xl mx-auto">
+            {/* Header */}
+            <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Users className="w-8 h-8 text-purple-600" />
+                  <h1 className="text-2xl font-bold text-gray-800">Anonymous Matcher</h1>
+                </div>
+                {status !== 'disconnected' && (
+                  <button
+                    onClick={leaveSession}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Leave
+                  </button>
+                )}
+              </div>
+              <p className="text-gray-600 mt-2">Connect with random people anonymously</p>
+            </div>
+
+            {error && (
+              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-6">
+                {error}
+              </div>
+            )}
+
+            {/* Status Display */}
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              {status === 'disconnected' && (
+                <div className="text-center py-12">
+                  <UserCheck className="w-16 h-16 text-purple-600 mx-auto mb-4" />
+                  <h2 className="text-2xl font-semibold text-gray-800 mb-4">Ready to Connect?</h2>
+                  <p className="text-gray-600 mb-6">Click below to join and get matched with someone anonymously</p>
+                  <button
+                    onClick={joinQueue}
+                    className="px-8 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-semibold"
+                  >
+                    Join Queue
+                  </button>
+                </div>
+              )}
+
+              {status === 'waiting' && (
+                <div className="text-center py-12">
+                  <Clock className="w-16 h-16 text-blue-600 mx-auto mb-4 animate-pulse" />
+                  <h2 className="text-2xl font-semibold text-gray-800 mb-4">Waiting for Match...</h2>
+                  <p className="text-gray-600 mb-2">Looking for someone to connect with</p>
+                  <p className="text-sm text-gray-500">
+                    {waitingCount > 1 ? `${waitingCount} people waiting` : 'You are next in line'}
+                  </p>
+                  <div className="mt-6">
+                    <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
+                  </div>
+                </div>
+              )}
+
+              {status === 'matched' && (
+                <div>
+                  <div className="flex items-center justify-between mb-6 pb-4 border-b">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                      <span className="text-green-600 font-semibold">Connected</span>
+                    </div>
+                    <span className="text-sm text-gray-500">Chatting with a stranger</span>
+                  </div>
+
+                  {/* Messages */}
+                  <div className="bg-gray-50 rounded-lg p-4 mb-4 h-96 overflow-y-auto">
+                    {messages.length === 0 ? (
+                      <div className="text-center text-gray-400 py-12">
+                        <MessageCircle className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                        <p>No messages yet. Say hi!</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {messages.map((msg) => (
+                          <div
+                            key={msg.id}
+                            className={`flex ${msg.sender === userId ? 'justify-end' : 'justify-start'}`}
+                          >
+                            <div
+                              className={`max-w-xs px-4 py-2 rounded-lg ${
+                                msg.sender === userId
+                                  ? 'bg-purple-600 text-white'
+                                  : 'bg-white text-gray-800 border border-gray-200'
+                              }`}
+                            >
+                              <p>{msg.text}</p>
+                              <span className="text-xs opacity-70 mt-1 block">
+                                {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                        <div ref={messagesEndRef} />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Message Input */}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={messageInput}
+                      onChange={(e) => setMessageInput(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                      placeholder="Type a message..."
+                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-600"
+                    />
+                    <button
+                      onClick={sendMessage}
+                      className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-semibold"
+                    >
+                      Send
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Info */}
+            <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <p className="text-sm text-blue-800">
+                <strong>Note:</strong> This app uses Firebase for real-time matching and messaging. 
+                All connections are anonymous and temporary.
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.render(<AnonymousMatcher />, document.getElementById('root'));
+  </script>
 </body>
 </html>
