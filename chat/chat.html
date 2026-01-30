@@ -126,27 +126,21 @@
       };
 
       const listenForMatch = (currentUserId) => {
-        // Listen for when we're removed from waiting (matched)
-        const waitingRef = database.ref(`waiting/${currentUserId}`);
-        const listener = waitingRef.on('value', async (snapshot) => {
-          if (!snapshot.exists() && status === 'waiting') {
-            // We've been matched! Find our session
-            const sessionsSnapshot = await database.ref('sessions').once('value');
-            const sessions = sessionsSnapshot.val() || {};
-            
-            for (const [sid, session] of Object.entries(sessions)) {
-              if (session.user1 === currentUserId || session.user2 === currentUserId) {
-                setSessionId(sid);
-                setStatus('matched');
-                waitingRef.off('value', listener);
-                listenForMessages(sid);
-                return;
-              }
-            }
+        // Listen for sessions that include us
+        const sessionsRef = database.ref('sessions');
+        const listener = sessionsRef.on('child_added', (snapshot) => {
+          const session = snapshot.val();
+          const sid = snapshot.key;
+          
+          if (session.user1 === currentUserId || session.user2 === currentUserId) {
+            setSessionId(sid);
+            setStatus('matched');
+            sessionsRef.off('child_added', listener);
+            listenForMessages(sid);
           }
         });
 
-        listenerRef.current = () => waitingRef.off('value', listener);
+        listenerRef.current = () => sessionsRef.off('child_added', listener);
       };
 
       const attemptMatching = async (currentUserId) => {
