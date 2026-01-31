@@ -263,8 +263,7 @@ const { useState, useEffect, useRef } = React;
               {status !== 'disconnected' && (
                 <button
                   onClick={leaveSession}
-                  className="flex items-center gap-2 px-4 py-2 bg-white text-blue-600 rounded-lg hover:bg-blue-50 transition-colors font-semibold"
-                >
+                  className="flex items-center gap-2 px-4 py-2 bg-white text-blue-600 rounded-lg hover:bg-blue-50 transition-colors font-semibold">
                   <LogOut className="w-4 h-4" />
                   Disconnect
                 </button>
