@@ -329,7 +329,7 @@
                 <div className="mb-6">
                   <Clock className="w-20 h-20 text-blue-900 mx-auto mb-4 animate-pulse" />
                 </div>
-                <h2 className="text-2xl font-semibold text-gray-800 mb-2">Looking for a stranger...</h2>
+                <h2 className="text-2xl font-semibold text-gray-800 mb-2">Looking for a wildcat...</h2>
                 <p className="text-gray-600">
                   {waitingCount > 1 ? `${waitingCount} users online` : 'Waiting for someone to connect'}
                 </p>
@@ -350,7 +350,7 @@
                 <div className="bg-green-50 border-l-4 border-green-500 p-4 mb-6">
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-                    <span className="text-green-700 font-semibold">You're now chatting with a random stranger</span>
+                    <span className="text-green-700 font-semibold">You're now chatting with another wildcat</span>
                   </div>
                 </div>
 
@@ -368,7 +368,7 @@
                         {messages.map((msg) => (
                           <div key={msg.id} className="text-sm">
                             <span className={`font-bold ${msg.sender === userId ? 'text-blue-900' : 'text-red-600'}`}>
-                              {msg.sender === userId ? 'You' : 'Stranger'}:
+                              {msg.sender === userId ? 'You' : 'Wildcat'}:
                             </span>
                             <span className="text-gray-800 ml-2">{msg.text}</span>
                           </div>
@@ -401,7 +401,7 @@
 
                 {/* Bottom Info */}
                 <div className="mt-4 text-center text-gray-500 text-sm">
-                  <p>Click "Disconnect" to end this chat and find a new stranger</p>
+                  <p>Click "Disconnect" to end this chat and find a new wildcat</p>
                 </div>
               </div>
             )}
@@ -409,7 +409,7 @@
 
           {/* Footer */}
           <div className="max-w-6xl mx-auto px-4 py-8 text-center text-gray-400 text-xs">
-            <p>MC Wildchat • Anonymous chatting for Marin Catholic students</p>
+            <p>MC Wildchat • Chatting for Marin Catholic students</p>
             <p className="mt-2">Your chats are anonymous and temporary</p>
           </div>
         </div>
