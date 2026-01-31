@@ -58,88 +58,89 @@
     </div>
 
     <script>
-        // Firebase Configuration (use your same config)
-        const firebaseConfig = {
-            apiKey: "AIzaSyDvT_GPef-lLPD2X86xM2MLSTl7s7OQfKg",
-            authDomain: "chat-together-mc.firebaseapp.com",
-            databaseURL: "https://chat-together-mc-default-rtdb.firebaseio.com",
-            projectId: "chat-together-mc",
-            storageBucket: "chat-together-mc.firebasestorage.app",
-            messagingSenderId: "647441407343",
-            appId: "1:647441407343:web:b76cf33d52fc01b8631c9a",
-            measurementId: "G-07E1B315VT"
-        };
+    const firebaseConfig = {
+        apiKey: "AIzaSyDvT_GPef-lLPD2X86xM2MLSTl7s7OQfKg",
+        authDomain: "chat-together-mc.firebaseapp.com",
+        databaseURL: "https://chat-together-mc-default-rtdb.firebaseio.com",
+        projectId: "chat-together-mc",
+        storageBucket: "chat-together-mc.firebasestorage.app",
+        messagingSenderId: "647441407343",
+        appId: "1:647441407343:web:b76cf33d52fc01b8631c9a",
+        measurementId: "G-07E1B315VT"
+    };
 
-        // Initialize Firebase
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
+    // Initialize Firebase
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
+
+    const provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ hd: 'marincatholic.org' });
+
+    const signInBtn = document.getElementById('googleSignInBtn');
+    const signInContainer = document.getElementById('signInContainer');
+    const errorContainer = document.getElementById('errorContainer');
+    const errorMessage = document.getElementById('errorMessage');
+    const loadingContainer = document.getElementById('loadingContainer');
+
+    function showError(message) {
+        errorMessage.textContent = message;
+        errorContainer.classList.remove('hidden');
+        loadingContainer.classList.add('hidden');
+        signInContainer.classList.remove('hidden');
+    }
+
+    function showLoading() {
+        loadingContainer.classList.remove('hidden');
+        signInContainer.classList.add('hidden');
+        errorContainer.classList.add('hidden');
+    }
+
+    signInBtn.addEventListener('click', async () => {
+        showLoading();
+
+        try {
+            const result = await firebase.auth().signInWithPopup(provider);
+            const user = result.user;
+
+            // Get the ID token result to check the hosted domain
+            const tokenResult = await user.getIdTokenResult();
+
+            if (tokenResult.claims.hd === 'marincatholic.org') {
+                console.log('Access granted!');
+                window.location.href = 'chat.html'; // redirect to chat
+            } else {
+                await firebase.auth().signOut();
+                showError('Access denied. Please use a @marincatholic.org email address.');
+            }
+        } catch (error) {
+            console.error('Sign-in error:', error);
+            if (error.code === 'auth/popup-closed-by-user') {
+                showError('Sign-in cancelled.');
+            } else if (error.code === 'auth/popup-blocked') {
+                showError('Popup blocked. Please allow popups for this site.');
+            } else {
+                showError(`Sign-in failed: ${error.message}`);
+            }
         }
+    });
 
-        // Set up Google Sign-In
-        const provider = new firebase.auth.GoogleAuthProvider();
-        provider.setCustomParameters({
-            hd: 'marincatholic.org' // This hints to only show MC accounts
-        });
-
-        const signInBtn = document.getElementById('googleSignInBtn');
-        const signInContainer = document.getElementById('signInContainer');
-        const errorContainer = document.getElementById('errorContainer');
-        const errorMessage = document.getElementById('errorMessage');
-        const loadingContainer = document.getElementById('loadingContainer');
-
-        function showError(message) {
-            errorMessage.textContent = message;
-            errorContainer.classList.remove('hidden');
-            loadingContainer.classList.add('hidden');
-            signInContainer.classList.remove('hidden');
-        }
-
-        function showLoading() {
-            loadingContainer.classList.remove('hidden');
-            signInContainer.classList.add('hidden');
-            errorContainer.classList.add('hidden');
-        }
-
-        signInBtn.addEventListener('click', async () => {
-            showLoading();
-
+    // Check if user is already signed in
+    firebase.auth().onAuthStateChanged(async (user) => {
+        if (user) {
             try {
-                const result = await firebase.auth().signInWithPopup(provider);
-                const user = result.user;
-                const email = user.email;
-
-                console.log('Signed in as:', email);
-
-                // Check if email ends with @marincatholic.org
-                if (email.endsWith('@marincatholic.org')) {
-                    // Success! Redirect to chat
-                    console.log('Access granted!');
-                    window.location.href = 'chat.html'; // or whatever your chat page is called
+                const tokenResult = await user.getIdTokenResult();
+                if (tokenResult.claims.hd === 'marincatholic.org') {
+                    window.location.href = 'chat.html';
                 } else {
-                    // Not an MC email
                     await firebase.auth().signOut();
-                    showError('Access denied. Please use a @marincatholic.org email address.');
                 }
-            } catch (error) {
-                console.error('Sign-in error:', error);
-                
-                if (error.code === 'auth/popup-closed-by-user') {
-                    showError('Sign-in cancelled.');
-                } else if (error.code === 'auth/popup-blocked') {
-                    showError('Popup blocked. Please allow popups for this site.');
-                } else {
-                    showError('Sign-in failed. Please try again.');
-                }
+            } catch (err) {
+                console.error('Auth state error:', err);
             }
-        });
+        }
+    });
+</script>
 
-        // Check if user is already signed in
-        firebase.auth().onAuthStateChanged((user) => {
-            if (user && user.email.endsWith('@marincatholic.org')) {
-                // Already signed in with MC email, redirect immediately
-                window.location.href = 'chat.html';
-            }
-        });
-    </script>
 </body>
 </html>
