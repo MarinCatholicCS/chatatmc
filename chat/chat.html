@@ -268,21 +268,21 @@
       return (
         <div className="min-h-screen bg-white">
           {/* Header */}
-          <div className="bg-blue-600 shadow-md">
+          <div className="bg-blue-900 shadow-md">
             <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="bg-white rounded-lg p-2">
-                  <img src="../mclogo.png" alt="MC Logo" className="w-6 h-6 object-contain" />
+                  <img src="mclogo.png" alt="MC Logo" className="w-6 h-6 object-contain" />
                 </div>
                 <div>
                   <h1 className="text-2xl font-bold text-white">MC Wildchat</h1>
-                  <p className="text-blue-100 text-sm">Talk to strangers!</p>
+                  <p className="text-blue-200 text-sm">Talk to strangers!</p>
                 </div>
               </div>
               {status !== 'disconnected' && (
                 <button
                   onClick={leaveSession}
-                  className="flex items-center gap-2 px-4 py-2 bg-white text-blue-600 rounded-lg hover:bg-blue-50 transition-colors font-semibold"
+                  className="flex items-center gap-2 px-4 py-2 bg-white text-blue-900 rounded-lg hover:bg-blue-50 transition-colors font-semibold"
                 >
                   <LogOut className="w-4 h-4" />
                   Disconnect
@@ -304,8 +304,8 @@
             {status === 'disconnected' && (
               <div className="text-center py-16">
                 <div className="mb-8">
-                  <div className="inline-block bg-blue-100 rounded-full p-6 mb-4">
-                    <img src="../mclogo.png" alt="MC Logo" className="w-16 h-16 object-contain" />
+                  <div className="inline-block bg-blue-50 rounded-full p-6 mb-4">
+                    <img src="mclogo.png" alt="MC Logo" className="w-16 h-16 object-contain" />
                   </div>
                   <h2 className="text-3xl font-bold text-gray-800 mb-2">MC Wildchat</h2>
                   <p className="text-gray-600 text-lg">Connect with random Marin Catholic students anonymously</p>
@@ -313,7 +313,7 @@
                 
                 <button
                   onClick={joinQueue}
-                  className="px-12 py-4 bg-blue-600 text-white text-xl rounded-lg hover:bg-blue-700 transition-colors font-bold shadow-lg"
+                  className="px-12 py-4 bg-blue-900 text-white text-xl rounded-lg hover:bg-blue-800 transition-colors font-bold shadow-lg"
                 >
                   Start Chatting
                 </button>
@@ -327,7 +327,7 @@
             {status === 'waiting' && (
               <div className="text-center py-16">
                 <div className="mb-6">
-                  <Clock className="w-20 h-20 text-blue-600 mx-auto mb-4 animate-pulse" />
+                  <Clock className="w-20 h-20 text-blue-900 mx-auto mb-4 animate-pulse" />
                 </div>
                 <h2 className="text-2xl font-semibold text-gray-800 mb-2">Looking for a stranger...</h2>
                 <p className="text-gray-600">
@@ -336,9 +336,9 @@
                 <div className="mt-8">
                   <div className="inline-block">
                     <div className="flex gap-2">
-                      <div className="w-3 h-3 bg-blue-600 rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
-                      <div className="w-3 h-3 bg-blue-600 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
-                      <div className="w-3 h-3 bg-blue-600 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                      <div className="w-3 h-3 bg-blue-900 rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
+                      <div className="w-3 h-3 bg-blue-900 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                      <div className="w-3 h-3 bg-blue-900 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
                     </div>
                   </div>
                 </div>
@@ -367,7 +367,7 @@
                       <div className="space-y-2">
                         {messages.map((msg) => (
                           <div key={msg.id} className="text-sm">
-                            <span className={`font-bold ${msg.sender === userId ? 'text-blue-600' : 'text-red-600'}`}>
+                            <span className={`font-bold ${msg.sender === userId ? 'text-blue-900' : 'text-red-600'}`}>
                               {msg.sender === userId ? 'You' : 'Stranger'}:
                             </span>
                             <span className="text-gray-800 ml-2">{msg.text}</span>
@@ -387,11 +387,11 @@
                         onChange={(e) => setMessageInput(e.target.value)}
                         onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
                         placeholder="Type your message here..."
-                        className="flex-1 px-4 py-3 border-2 border-gray-300 rounded focus:outline-none focus:border-blue-600 text-base"
+                        className="flex-1 px-4 py-3 border-2 border-gray-300 rounded focus:outline-none focus:border-blue-900 text-base"
                       />
                       <button
                         onClick={sendMessage}
-                        className="px-8 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors font-semibold"
+                        className="px-8 py-3 bg-blue-900 text-white rounded hover:bg-blue-800 transition-colors font-semibold"
                       >
                         Send
                       </button>
