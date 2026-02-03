@@ -12,6 +12,9 @@
   <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+  
+  <!-- PeerJS for WebRTC -->
+  <script src="https://unpkg.com/peerjs@1.5.0/dist/peerjs.min.js"></script>
 </head>
 <body>
   <div id="root"></div>
@@ -50,12 +53,6 @@
       </svg>
     );
 
-    const UserCheck = ({ className }) => (
-      <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-      </svg>
-    );
-
     const Clock = ({ className }) => (
       <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -74,6 +71,31 @@
       </svg>
     );
 
+    const Video = ({ className }) => (
+      <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+      </svg>
+    );
+
+    const VideoOff = ({ className }) => (
+      <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+      </svg>
+    );
+
+    const Mic = ({ className }) => (
+      <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+      </svg>
+    );
+
+    const MicOff = ({ className }) => (
+      <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+      </svg>
+    );
+
     function AnonymousMatcher() {
       const [status, setStatus] = useState('disconnected');
       const [userId, setUserId] = useState(null);
@@ -83,10 +105,20 @@
       const [waitingCount, setWaitingCount] = useState(0);
       const [error, setError] = useState(null);
       const [partnerDisconnected, setPartnerDisconnected] = useState(false);
+      const [videoEnabled, setVideoEnabled] = useState(false);
+      const [isVideoActive, setIsVideoActive] = useState(false);
+      const [isMuted, setIsMuted] = useState(false);
+      const [isVideoMuted, setIsVideoMuted] = useState(false);
+      
       const messagesEndRef = useRef(null);
       const listenerRef = useRef(null);
       const sessionListenerRef = useRef(null);
       const hasAddedDisconnectMessage = useRef(false);
+      const localVideoRef = useRef(null);
+      const remoteVideoRef = useRef(null);
+      const peerRef = useRef(null);
+      const localStreamRef = useRef(null);
+      const callRef = useRef(null);
 
       const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -105,6 +137,7 @@
           if (sessionListenerRef.current) {
             sessionListenerRef.current();
           }
+          stopVideo();
         };
       }, []);
 
@@ -146,7 +179,6 @@
 
       const listenForMatch = (currentUserId) => {
         console.log('Setting up match listener for:', currentUserId);
-        // Listen for sessions that include us
         const sessionsRef = database.ref('sessions');
         const listener = sessionsRef.on('child_added', (snapshot) => {
           const session = snapshot.val();
@@ -161,12 +193,140 @@
             hasAddedDisconnectMessage.current = false;
             sessionsRef.off('child_added', listener);
             listenForMessages(sid);
+            initializePeer(currentUserId, sid, session.user1 === currentUserId);
           } else {
             console.log('This session is not for me');
           }
         });
 
         listenerRef.current = () => sessionsRef.off('child_added', listener);
+      };
+
+      const initializePeer = (currentUserId, sid, isInitiator) => {
+        if (peerRef.current) {
+          peerRef.current.destroy();
+        }
+
+        peerRef.current = new Peer(currentUserId);
+
+        peerRef.current.on('open', (id) => {
+          console.log('My peer ID is: ' + id);
+          
+          // Store peer ID in Firebase
+          database.ref(`sessions/${sid}/peers/${currentUserId}`).set(id);
+
+          // Listen for partner's peer ID
+          if (isInitiator) {
+            database.ref(`sessions/${sid}/peers`).on('value', (snapshot) => {
+              const peers = snapshot.val() || {};
+              const partnerPeerId = Object.values(peers).find(peerId => peerId !== currentUserId);
+              
+              if (partnerPeerId && partnerPeerId !== currentUserId) {
+                console.log('Found partner peer ID:', partnerPeerId);
+              }
+            });
+          }
+        });
+
+        peerRef.current.on('call', (call) => {
+          console.log('Receiving call...');
+          if (localStreamRef.current) {
+            call.answer(localStreamRef.current);
+            callRef.current = call;
+            
+            call.on('stream', (remoteStream) => {
+              console.log('Received remote stream');
+              if (remoteVideoRef.current) {
+                remoteVideoRef.current.srcObject = remoteStream;
+              }
+            });
+          }
+        });
+
+        peerRef.current.on('error', (err) => {
+          console.error('Peer error:', err);
+        });
+      };
+
+      const startVideo = async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: true, 
+            audio: true 
+          });
+          
+          localStreamRef.current = stream;
+          if (localVideoRef.current) {
+            localVideoRef.current.srcObject = stream;
+          }
+          
+          setIsVideoActive(true);
+          setVideoEnabled(true);
+
+          // Get partner's peer ID and call them
+          const snapshot = await database.ref(`sessions/${sessionId}/peers`).once('value');
+          const peers = snapshot.val() || {};
+          const partnerPeerId = Object.keys(peers).find(key => key !== userId);
+          
+          if (partnerPeerId && peerRef.current) {
+            const partnerPeerValue = peers[partnerPeerId];
+            console.log('Calling partner:', partnerPeerValue);
+            const call = peerRef.current.call(partnerPeerValue, stream);
+            callRef.current = call;
+            
+            call.on('stream', (remoteStream) => {
+              console.log('Received remote stream from call');
+              if (remoteVideoRef.current) {
+                remoteVideoRef.current.srcObject = remoteStream;
+              }
+            });
+          }
+        } catch (err) {
+          console.error('Error accessing camera/microphone:', err);
+          setError('Could not access camera/microphone. Please check permissions.');
+        }
+      };
+
+      const stopVideo = () => {
+        if (localStreamRef.current) {
+          localStreamRef.current.getTracks().forEach(track => track.stop());
+          localStreamRef.current = null;
+        }
+        
+        if (callRef.current) {
+          callRef.current.close();
+          callRef.current = null;
+        }
+        
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = null;
+        }
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = null;
+        }
+        
+        setIsVideoActive(false);
+        setVideoEnabled(false);
+      };
+
+      const toggleMute = () => {
+        if (localStreamRef.current) {
+          const audioTrack = localStreamRef.current.getAudioTracks()[0];
+          if (audioTrack) {
+            audioTrack.enabled = !audioTrack.enabled;
+            setIsMuted(!audioTrack.enabled);
+          }
+        }
+      };
+
+      const toggleVideo = () => {
+        if (localStreamRef.current) {
+          const videoTrack = localStreamRef.current.getVideoTracks()[0];
+          if (videoTrack) {
+            videoTrack.enabled = !videoTrack.enabled;
+            setIsVideoMuted(!videoTrack.enabled);
+          }
+        }
       };
 
       const attemptMatching = async (currentUserId) => {
@@ -188,10 +348,10 @@
               user1: currentUserId,
               user2: partnerId,
               createdAt: firebase.database.ServerValue.TIMESTAMP,
-              messages: {}
+              messages: {},
+              peers: {}
             };
 
-            // Create session and remove both from waiting
             await Promise.all([
               database.ref(`sessions/${newSessionId}`).set(session),
               database.ref(`waiting/${currentUserId}`).remove(),
@@ -200,7 +360,6 @@
             console.log('Session created and users removed from waiting');
           } else {
             console.log('No other users to match with');
-            // Count waiting users
             updateWaitingCount();
           }
         } catch (err) {
@@ -229,7 +388,6 @@
           setMessages(messagesList);
         });
 
-        // Listen for session deletion (partner disconnect)
         const sessionRef = database.ref(`sessions/${sid}`);
         const sessionListener = sessionRef.on('value', (snapshot) => {
           if (!snapshot.exists()) {
@@ -243,6 +401,7 @@
                 timestamp: Date.now()
               }]);
               setPartnerDisconnected(true);
+              stopVideo();
             }
           }
         });
@@ -271,11 +430,17 @@
 
       const leaveSession = async () => {
         try {
+          stopVideo();
+          
           if (listenerRef.current) {
             listenerRef.current();
           }
           if (sessionListenerRef.current) {
             sessionListenerRef.current();
+          }
+          if (peerRef.current) {
+            peerRef.current.destroy();
+            peerRef.current = null;
           }
 
           if (status === 'waiting' && userId) {
@@ -283,14 +448,12 @@
           }
           
           if (status === 'matched' && sessionId && !partnerDisconnected) {
-            // Send disconnect message first
             await database.ref(`sessions/${sessionId}/messages`).push({
               sender: 'system',
               text: 'Wildcat has disconnected',
               timestamp: firebase.database.ServerValue.TIMESTAMP
             });
             
-            // Small delay so partner can see it
             setTimeout(async () => {
               await database.ref(`sessions/${sessionId}`).remove();
             }, 500);
@@ -312,7 +475,6 @@
         }, 500);
       };
 
-      // Listen for waiting count updates
       useEffect(() => {
         if (status === 'waiting') {
           const interval = setInterval(updateWaitingCount, 3000);
@@ -437,6 +599,76 @@
                     </span>
                   </div>
                 </div>
+
+                {/* Video Section */}
+                {isVideoActive && (
+                  <div className="mb-6">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="relative bg-gray-900 rounded-lg overflow-hidden aspect-video">
+                        <video 
+                          ref={remoteVideoRef} 
+                          autoPlay 
+                          playsInline
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-sm">
+                          Wildcat
+                        </div>
+                      </div>
+                      <div className="relative bg-gray-900 rounded-lg overflow-hidden aspect-video">
+                        <video 
+                          ref={localVideoRef} 
+                          autoPlay 
+                          muted 
+                          playsInline
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-sm">
+                          You
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Video Controls */}
+                    <div className="flex justify-center gap-3 mt-4">
+                      <button
+                        onClick={toggleMute}
+                        className={`p-3 rounded-full transition-colors ${
+                          isMuted ? 'bg-red-500 hover:bg-red-600' : 'bg-gray-700 hover:bg-gray-800'
+                        } text-white`}
+                      >
+                        {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                      </button>
+                      <button
+                        onClick={toggleVideo}
+                        className={`p-3 rounded-full transition-colors ${
+                          isVideoMuted ? 'bg-red-500 hover:bg-red-600' : 'bg-gray-700 hover:bg-gray-800'
+                        } text-white`}
+                      >
+                        {isVideoMuted ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
+                      </button>
+                      <button
+                        onClick={stopVideo}
+                        className="p-3 rounded-full bg-red-500 hover:bg-red-600 text-white"
+                      >
+                        End Call
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Video Button */}
+                {!isVideoActive && !partnerDisconnected && (
+                  <div className="mb-6 text-center">
+                    <button
+                      onClick={startVideo}
+                      className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold mx-auto"
+                    >
+                      <Video className="w-5 h-5" />
+                      Start Video Chat
+                    </button>
+                  </div>
+                )}
 
                 {/* Chat Box */}
                 <div className="border-2 border-gray-300 rounded-lg overflow-hidden bg-white">
