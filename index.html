@@ -105,10 +105,10 @@
       const [waitingCount, setWaitingCount] = useState(0);
       const [error, setError] = useState(null);
       const [partnerDisconnected, setPartnerDisconnected] = useState(false);
-      const [videoEnabled, setVideoEnabled] = useState(false);
       const [isVideoActive, setIsVideoActive] = useState(false);
       const [isMuted, setIsMuted] = useState(false);
       const [isVideoMuted, setIsVideoMuted] = useState(false);
+      const [remoteStreamActive, setRemoteStreamActive] = useState(false);
       
       const messagesEndRef = useRef(null);
       const listenerRef = useRef(null);
@@ -119,6 +119,7 @@
       const peerRef = useRef(null);
       const localStreamRef = useRef(null);
       const callRef = useRef(null);
+      const peerIdListenerRef = useRef(null);
 
       const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -136,6 +137,9 @@
           }
           if (sessionListenerRef.current) {
             sessionListenerRef.current();
+          }
+          if (peerIdListenerRef.current) {
+            peerIdListenerRef.current();
           }
           stopVideo();
         };
@@ -155,7 +159,6 @@
           setUserId(newUserId);
           console.log('My User ID:', newUserId);
 
-          // Add to waiting pool
           await database.ref(`waiting/${newUserId}`).set({
             timestamp: firebase.database.ServerValue.TIMESTAMP,
             status: 'waiting'
@@ -164,10 +167,8 @@
 
           setStatus('waiting');
           
-          // Listen for match BEFORE attempting to match
           listenForMatch(newUserId);
           
-          // Small delay to ensure listener is set up
           setTimeout(() => {
             attemptMatching(newUserId);
           }, 500);
@@ -193,7 +194,7 @@
             hasAddedDisconnectMessage.current = false;
             sessionsRef.off('child_added', listener);
             listenForMessages(sid);
-            initializePeer(currentUserId, sid, session.user1 === currentUserId);
+            initializePeer(currentUserId, sid);
           } else {
             console.log('This session is not for me');
           }
@@ -202,84 +203,137 @@
         listenerRef.current = () => sessionsRef.off('child_added', listener);
       };
 
-      const initializePeer = (currentUserId, sid, isInitiator) => {
+      const initializePeer = (currentUserId, sid) => {
+        console.log('Initializing peer for user:', currentUserId);
+        
         if (peerRef.current) {
           peerRef.current.destroy();
         }
 
-        peerRef.current = new Peer(currentUserId);
+        // Create peer with random ID
+        peerRef.current = new Peer();
 
-        peerRef.current.on('open', (id) => {
-          console.log('My peer ID is: ' + id);
+        peerRef.current.on('open', (peerId) => {
+          console.log('My peer ID is:', peerId);
           
-          // Store peer ID in Firebase
-          database.ref(`sessions/${sid}/peers/${currentUserId}`).set(id);
+          // Store peer ID in Firebase under this user's ID
+          database.ref(`sessions/${sid}/peers/${currentUserId}`).set(peerId);
 
           // Listen for partner's peer ID
-          if (isInitiator) {
-            database.ref(`sessions/${sid}/peers`).on('value', (snapshot) => {
-              const peers = snapshot.val() || {};
-              const partnerPeerId = Object.values(peers).find(peerId => peerId !== currentUserId);
+          const peersRef = database.ref(`sessions/${sid}/peers`);
+          const peerListener = peersRef.on('value', (snapshot) => {
+            const peers = snapshot.val() || {};
+            console.log('All peers:', peers);
+            
+            // Find partner's peer ID (not mine)
+            const partnerUserId = Object.keys(peers).find(uid => uid !== currentUserId);
+            
+            if (partnerUserId) {
+              const partnerPeerId = peers[partnerUserId];
+              console.log('Partner peer ID found:', partnerPeerId);
               
-              if (partnerPeerId && partnerPeerId !== currentUserId) {
-                console.log('Found partner peer ID:', partnerPeerId);
+              // If we have a local stream, initiate call
+              if (localStreamRef.current && !callRef.current) {
+                console.log('Calling partner with peer ID:', partnerPeerId);
+                makeCall(partnerPeerId);
               }
-            });
-          }
+            }
+          });
+          
+          peerIdListenerRef.current = () => peersRef.off('value', peerListener);
         });
 
+        // Handle incoming calls
         peerRef.current.on('call', (call) => {
-          console.log('Receiving call...');
+          console.log('Receiving incoming call');
+          
           if (localStreamRef.current) {
+            console.log('Answering call with local stream');
             call.answer(localStreamRef.current);
             callRef.current = call;
             
             call.on('stream', (remoteStream) => {
-              console.log('Received remote stream');
+              console.log('Received remote stream on incoming call');
               if (remoteVideoRef.current) {
                 remoteVideoRef.current.srcObject = remoteStream;
+                setRemoteStreamActive(true);
               }
             });
+
+            call.on('close', () => {
+              console.log('Call closed');
+              setRemoteStreamActive(false);
+            });
+          } else {
+            console.log('No local stream to answer with');
           }
         });
 
         peerRef.current.on('error', (err) => {
           console.error('Peer error:', err);
+          setError('Connection error: ' + err.type);
+        });
+      };
+
+      const makeCall = (partnerPeerId) => {
+        if (!peerRef.current || !localStreamRef.current) {
+          console.log('Cannot make call - missing peer or stream');
+          return;
+        }
+
+        console.log('Making call to:', partnerPeerId);
+        const call = peerRef.current.call(partnerPeerId, localStreamRef.current);
+        callRef.current = call;
+        
+        call.on('stream', (remoteStream) => {
+          console.log('Received remote stream on outgoing call');
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = remoteStream;
+            setRemoteStreamActive(true);
+          }
+        });
+
+        call.on('close', () => {
+          console.log('Call closed');
+          setRemoteStreamActive(false);
+        });
+
+        call.on('error', (err) => {
+          console.error('Call error:', err);
         });
       };
 
       const startVideo = async () => {
         try {
+          console.log('Starting video...');
           const stream = await navigator.mediaDevices.getUserMedia({ 
             video: true, 
             audio: true 
           });
           
+          console.log('Got local stream');
           localStreamRef.current = stream;
           if (localVideoRef.current) {
             localVideoRef.current.srcObject = stream;
           }
           
           setIsVideoActive(true);
-          setVideoEnabled(true);
 
-          // Get partner's peer ID and call them
-          const snapshot = await database.ref(`sessions/${sessionId}/peers`).once('value');
-          const peers = snapshot.val() || {};
-          const partnerPeerId = Object.keys(peers).find(key => key !== userId);
-          
-          if (partnerPeerId && peerRef.current) {
-            const partnerPeerValue = peers[partnerPeerId];
-            console.log('Calling partner:', partnerPeerValue);
-            const call = peerRef.current.call(partnerPeerValue, stream);
-            callRef.current = call;
+          // Check if partner's peer ID is already available
+          if (sessionId && userId) {
+            const snapshot = await database.ref(`sessions/${sessionId}/peers`).once('value');
+            const peers = snapshot.val() || {};
+            console.log('Existing peers:', peers);
             
-            call.on('stream', (remoteStream) => {
-              console.log('Received remote stream from call');
-              if (remoteVideoRef.current) {
-                remoteVideoRef.current.srcObject = remoteStream;
-              }
-            });
+            const partnerUserId = Object.keys(peers).find(uid => uid !== userId);
+            
+            if (partnerUserId) {
+              const partnerPeerId = peers[partnerUserId];
+              console.log('Partner already connected, calling:', partnerPeerId);
+              makeCall(partnerPeerId);
+            } else {
+              console.log('Waiting for partner to join...');
+            }
           }
         } catch (err) {
           console.error('Error accessing camera/microphone:', err);
@@ -288,6 +342,8 @@
       };
 
       const stopVideo = () => {
+        console.log('Stopping video');
+        
         if (localStreamRef.current) {
           localStreamRef.current.getTracks().forEach(track => track.stop());
           localStreamRef.current = null;
@@ -298,6 +354,11 @@
           callRef.current = null;
         }
         
+        if (peerIdListenerRef.current) {
+          peerIdListenerRef.current();
+          peerIdListenerRef.current = null;
+        }
+        
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = null;
         }
@@ -306,7 +367,7 @@
         }
         
         setIsVideoActive(false);
-        setVideoEnabled(false);
+        setRemoteStreamActive(false);
       };
 
       const toggleMute = () => {
@@ -437,6 +498,9 @@
           }
           if (sessionListenerRef.current) {
             sessionListenerRef.current();
+          }
+          if (peerIdListenerRef.current) {
+            peerIdListenerRef.current();
           }
           if (peerRef.current) {
             peerRef.current.destroy();
@@ -611,6 +675,14 @@
                           playsInline
                           className="w-full h-full object-cover"
                         />
+                        {!remoteStreamActive && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-gray-800 text-white">
+                            <div className="text-center">
+                              <Video className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                              <p className="text-sm">Waiting for partner...</p>
+                            </div>
+                          </div>
+                        )}
                         <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-sm">
                           Wildcat
                         </div>
@@ -636,6 +708,7 @@
                         className={`p-3 rounded-full transition-colors ${
                           isMuted ? 'bg-red-500 hover:bg-red-600' : 'bg-gray-700 hover:bg-gray-800'
                         } text-white`}
+                        title={isMuted ? 'Unmute' : 'Mute'}
                       >
                         {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
                       </button>
@@ -644,12 +717,14 @@
                         className={`p-3 rounded-full transition-colors ${
                           isVideoMuted ? 'bg-red-500 hover:bg-red-600' : 'bg-gray-700 hover:bg-gray-800'
                         } text-white`}
+                        title={isVideoMuted ? 'Turn on camera' : 'Turn off camera'}
                       >
                         {isVideoMuted ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
                       </button>
                       <button
                         onClick={stopVideo}
                         className="p-3 rounded-full bg-red-500 hover:bg-red-600 text-white"
+                        title="End call"
                       >
                         End Call
                       </button>
