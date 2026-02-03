@@ -78,6 +78,7 @@
       const [error, setError] = useState(null);
       const messagesEndRef = useRef(null);
       const listenerRef = useRef(null);
+      const sessionListenerRef = useRef(null);
 
       const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -92,6 +93,9 @@
         return () => {
           if (listenerRef.current) {
             listenerRef.current();
+          }
+          if (sessionListenerRef.current) {
+            sessionListenerRef.current();
           }
         };
       }, []);
@@ -212,7 +216,28 @@
           setMessages(messagesList);
         });
 
+        // Listen for session deletion (partner disconnect)
+        const sessionRef = database.ref(`sessions/${sid}`);
+        const sessionListener = sessionRef.on('value', (snapshot) => {
+          if (!snapshot.exists() && status === 'matched') {
+            // Partner disconnected
+            setMessages(prev => [...prev, {
+              id: 'disconnect_' + Date.now(),
+              sender: 'system',
+              text: 'Wildcat has disconnected',
+              timestamp: Date.now()
+            }]);
+            
+            setTimeout(() => {
+              setStatus('disconnected');
+              setSessionId(null);
+              setMessages([]);
+            }, 2000);
+          }
+        });
+
         listenerRef.current = () => messagesRef.off('value', listener);
+        sessionListenerRef.current = () => sessionRef.off('value', sessionListener);
       };
 
       const sendMessage = async () => {
@@ -238,19 +263,32 @@
           if (listenerRef.current) {
             listenerRef.current();
           }
+          if (sessionListenerRef.current) {
+            sessionListenerRef.current();
+          }
 
           if (status === 'waiting' && userId) {
             await database.ref(`waiting/${userId}`).remove();
           }
           
           if (status === 'matched' && sessionId) {
-            await database.ref(`sessions/${sessionId}`).remove();
+            // Send disconnect message first
+            await database.ref(`sessions/${sessionId}/messages`).push({
+              sender: 'system',
+              text: 'Wildcat has disconnected',
+              timestamp: firebase.database.ServerValue.TIMESTAMP
+            });
+            
+            // Small delay so partner can see it
+            setTimeout(async () => {
+              await database.ref(`sessions/${sessionId}`).remove();
+            }, 500);
           }
           
           setStatus('disconnected');
           setUserId(null);
           setSessionId(null);
-          setMessages(["Chatter has left"]);
+          setMessages([]);
           setError(null);
         } catch (err) {
           console.error('Leave session error:', err);
@@ -367,10 +405,18 @@
                       <div className="space-y-2">
                         {messages.map((msg) => (
                           <div key={msg.id} className="text-sm">
-                            <span className={`font-bold ${msg.sender === userId ? 'text-blue-900' : 'text-red-600'}`}>
-                              {msg.sender === userId ? 'You' : 'Wildcat'}:
-                            </span>
-                            <span className="text-gray-800 ml-2">{msg.text}</span>
+                            {msg.sender === 'system' ? (
+                              <div className="text-center text-gray-500 italic py-2">
+                                {msg.text}
+                              </div>
+                            ) : (
+                              <>
+                                <span className={`font-bold ${msg.sender === userId ? 'text-blue-900' : 'text-red-600'}`}>
+                                  {msg.sender === userId ? 'You' : 'Wildcat'}:
+                                </span>
+                                <span className="text-gray-800 ml-2">{msg.text}</span>
+                              </>
+                            )}
                           </div>
                         ))}
                         <div ref={messagesEndRef} />
