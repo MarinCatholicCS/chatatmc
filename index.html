@@ -86,6 +86,7 @@
       const messagesEndRef = useRef(null);
       const listenerRef = useRef(null);
       const sessionListenerRef = useRef(null);
+      const hasAddedDisconnectMessage = useRef(false);
 
       const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -115,6 +116,8 @@
         try {
           setError(null);
           setPartnerDisconnected(false);
+          hasAddedDisconnectMessage.current = false;
+          setMessages([]);
           const newUserId = generateUserId();
           setUserId(newUserId);
           console.log('My User ID:', newUserId);
@@ -155,6 +158,7 @@
             setSessionId(sid);
             setStatus('matched');
             setPartnerDisconnected(false);
+            hasAddedDisconnectMessage.current = false;
             sessionsRef.off('child_added', listener);
             listenForMessages(sid);
           } else {
@@ -228,15 +232,18 @@
         // Listen for session deletion (partner disconnect)
         const sessionRef = database.ref(`sessions/${sid}`);
         const sessionListener = sessionRef.on('value', (snapshot) => {
-          if (!snapshot.exists() && status === 'matched' && !partnerDisconnected) {
-            // Partner disconnected - add system message to local state only
-            setMessages(prev => [...prev, {
-              id: 'disconnect_' + Date.now(),
-              sender: 'system',
-              text: 'Wildcat has disconnected',
-              timestamp: Date.now()
-            }]);
-            setPartnerDisconnected(true);
+          if (!snapshot.exists()) {
+            console.log('Session deleted - partner disconnected');
+            if (!hasAddedDisconnectMessage.current) {
+              hasAddedDisconnectMessage.current = true;
+              setMessages(prev => [...prev, {
+                id: 'disconnect_' + Date.now(),
+                sender: 'system',
+                text: 'Wildcat has disconnected',
+                timestamp: Date.now()
+              }]);
+              setPartnerDisconnected(true);
+            }
           }
         });
 
@@ -293,16 +300,12 @@
           setUserId(null);
           setSessionId(null);
           setError(null);
-          setPartnerDisconnected(false);
-          // Don't clear messages here
         } catch (err) {
           console.error('Leave session error:', err);
         }
       };
 
       const matchAgain = async () => {
-        // Clear messages when intentionally matching again
-        setMessages([]);
         await leaveSession();
         setTimeout(() => {
           joinQueue();
