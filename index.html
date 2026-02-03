@@ -68,6 +68,12 @@
       </svg>
     );
 
+    const Refresh = ({ className }) => (
+      <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+      </svg>
+    );
+
     function AnonymousMatcher() {
       const [status, setStatus] = useState('disconnected');
       const [userId, setUserId] = useState(null);
@@ -76,6 +82,7 @@
       const [messageInput, setMessageInput] = useState('');
       const [waitingCount, setWaitingCount] = useState(0);
       const [error, setError] = useState(null);
+      const [partnerDisconnected, setPartnerDisconnected] = useState(false);
       const messagesEndRef = useRef(null);
       const listenerRef = useRef(null);
       const sessionListenerRef = useRef(null);
@@ -107,6 +114,7 @@
       const joinQueue = async () => {
         try {
           setError(null);
+          setPartnerDisconnected(false);
           const newUserId = generateUserId();
           setUserId(newUserId);
           console.log('My User ID:', newUserId);
@@ -146,6 +154,7 @@
             console.log('I am in this session! Moving to matched state');
             setSessionId(sid);
             setStatus('matched');
+            setPartnerDisconnected(false);
             sessionsRef.off('child_added', listener);
             listenForMessages(sid);
           } else {
@@ -227,12 +236,7 @@
               text: 'Wildcat has disconnected',
               timestamp: Date.now()
             }]);
-            
-            setTimeout(() => {
-              setStatus('disconnected');
-              setSessionId(null);
-              setMessages([]);
-            }, 2000);
+            setPartnerDisconnected(true);
           }
         });
 
@@ -241,7 +245,7 @@
       };
 
       const sendMessage = async () => {
-        if (!messageInput.trim() || !sessionId) return;
+        if (!messageInput.trim() || !sessionId || partnerDisconnected) return;
 
         try {
           const newMessageRef = database.ref(`sessions/${sessionId}/messages`).push();
@@ -271,7 +275,7 @@
             await database.ref(`waiting/${userId}`).remove();
           }
           
-          if (status === 'matched' && sessionId) {
+          if (status === 'matched' && sessionId && !partnerDisconnected) {
             // Send disconnect message first
             await database.ref(`sessions/${sessionId}/messages`).push({
               sender: 'system',
@@ -290,9 +294,17 @@
           setSessionId(null);
           setMessages([]);
           setError(null);
+          setPartnerDisconnected(false);
         } catch (err) {
           console.error('Leave session error:', err);
         }
+      };
+
+      const matchAgain = async () => {
+        await leaveSession();
+        setTimeout(() => {
+          joinQueue();
+        }, 500);
       };
 
       // Listen for waiting count updates
@@ -310,7 +322,7 @@
             <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="bg-white rounded-lg p-2">
-                  <img src="/auth/mclogo.png" alt="MC Logo" className="w-6 h-6 object-contain" />
+                  <img src="auth/mclogo.png" alt="MC Logo" className="w-6 h-6 object-contain" />
                 </div>
                 <div>
                   <h1 className="text-2xl font-bold text-white">MC Wildchat</h1>
@@ -319,11 +331,24 @@
               </div>
               {status !== 'disconnected' && (
                 <button
-                  onClick={leaveSession}
-                  className="flex items-center gap-2 px-4 py-2 bg-white text-blue-900 rounded-lg hover:bg-blue-50 transition-colors font-semibold"
+                  onClick={partnerDisconnected ? matchAgain : leaveSession}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors font-semibold ${
+                    partnerDisconnected 
+                      ? 'bg-blue-300 text-blue-900 hover:bg-blue-200' 
+                      : 'bg-white text-blue-900 hover:bg-blue-50'
+                  }`}
                 >
-                  <LogOut className="w-4 h-4" />
-                  Disconnect
+                  {partnerDisconnected ? (
+                    <>
+                      <Refresh className="w-4 h-4" />
+                      Match Again
+                    </>
+                  ) : (
+                    <>
+                      <LogOut className="w-4 h-4" />
+                      Disconnect
+                    </>
+                  )}
                 </button>
               )}
             </div>
@@ -343,7 +368,7 @@
               <div className="text-center py-16">
                 <div className="mb-8">
                   <div className="inline-block bg-blue-50 rounded-full p-6 mb-4">
-                    <img src="/auth/mclogo.png" alt="MC Logo" className="w-16 h-16 object-contain" />
+                    <img src="auth/mclogo.png" alt="MC Logo" className="w-16 h-16 object-contain" />
                   </div>
                   <h2 className="text-3xl font-bold text-gray-800 mb-2">MC Wildchat</h2>
                   <p className="text-gray-600 text-lg">"Nothing beside remains"</p>
@@ -385,10 +410,26 @@
 
             {status === 'matched' && (
               <div>
-                <div className="bg-green-50 border-l-4 border-green-500 p-4 mb-6">
+                <div className={`border-l-4 p-4 mb-6 ${
+                  partnerDisconnected 
+                    ? 'bg-gray-50 border-gray-400' 
+                    : 'bg-green-50 border-green-500'
+                }`}>
                   <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-                    <span className="text-green-700 font-semibold">You're now chatting with another wildcat</span>
+                    <div className={`w-3 h-3 rounded-full ${
+                      partnerDisconnected 
+                        ? 'bg-gray-400' 
+                        : 'bg-green-500 animate-pulse'
+                    }`}></div>
+                    <span className={`font-semibold ${
+                      partnerDisconnected 
+                        ? 'text-gray-600' 
+                        : 'text-green-700'
+                    }`}>
+                      {partnerDisconnected 
+                        ? 'Wildcat has left the chat' 
+                        : "You're now chatting with another wildcat"}
+                    </span>
                   </div>
                 </div>
 
@@ -432,12 +473,20 @@
                         value={messageInput}
                         onChange={(e) => setMessageInput(e.target.value)}
                         onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-                        placeholder="Type your message here..."
-                        className="flex-1 px-4 py-3 border-2 border-gray-300 rounded focus:outline-none focus:border-blue-900 text-base"
+                        placeholder={partnerDisconnected ? "Partner disconnected..." : "Type your message here..."}
+                        disabled={partnerDisconnected}
+                        className={`flex-1 px-4 py-3 border-2 border-gray-300 rounded focus:outline-none focus:border-blue-900 text-base ${
+                          partnerDisconnected ? 'bg-gray-100 cursor-not-allowed' : ''
+                        }`}
                       />
                       <button
                         onClick={sendMessage}
-                        className="px-8 py-3 bg-blue-900 text-white rounded hover:bg-blue-800 transition-colors font-semibold"
+                        disabled={partnerDisconnected}
+                        className={`px-8 py-3 rounded font-semibold transition-colors ${
+                          partnerDisconnected 
+                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                            : 'bg-blue-900 text-white hover:bg-blue-800'
+                        }`}
                       >
                         Send
                       </button>
@@ -447,7 +496,11 @@
 
                 {/* Bottom Info */}
                 <div className="mt-4 text-center text-gray-500 text-sm">
-                  <p>Click "Disconnect" to end this chat and find a new wildcat</p>
+                  <p>
+                    {partnerDisconnected 
+                      ? 'Click "Match Again" to find a new wildcat' 
+                      : 'Click "Disconnect" to end this chat and find a new wildcat'}
+                  </p>
                 </div>
               </div>
             )}
