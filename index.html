@@ -228,8 +228,8 @@
         // Listen for session deletion (partner disconnect)
         const sessionRef = database.ref(`sessions/${sid}`);
         const sessionListener = sessionRef.on('value', (snapshot) => {
-          if (!snapshot.exists() && status === 'matched') {
-            // Partner disconnected
+          if (!snapshot.exists() && status === 'matched' && !partnerDisconnected) {
+            // Partner disconnected - add system message to local state only
             setMessages(prev => [...prev, {
               id: 'disconnect_' + Date.now(),
               sender: 'system',
@@ -292,15 +292,17 @@
           setStatus('disconnected');
           setUserId(null);
           setSessionId(null);
-          setMessages([]);
           setError(null);
           setPartnerDisconnected(false);
+          // Don't clear messages here
         } catch (err) {
           console.error('Leave session error:', err);
         }
       };
 
       const matchAgain = async () => {
+        // Clear messages when intentionally matching again
+        setMessages([]);
         await leaveSession();
         setTimeout(() => {
           joinQueue();
