@@ -24,11 +24,11 @@
     // ===========================================
     const ALLOWED_LOCATION = {
       name: "California",
-      // Bounding box for California (approximate)
-      minLat: 32.5,
-      maxLat: 42.0,
-      minLng: -124.5,
-      maxLng: -114.0
+      // Bounding box for California (generous bounds)
+      minLat: 32.0,
+      maxLat: 42.5,
+      minLng: -125.0,
+      maxLng: -113.5
     };
     // ===========================================
 
@@ -96,6 +96,7 @@
       const [error, setError] = useState(null);
       const [onlineUsers, setOnlineUsers] = useState({});
       const [locationStatus, setLocationStatus] = useState('pending'); // pending, granted, denied
+      const [debugCoords, setDebugCoords] = useState(null);
       
       const messagesEndRef = useRef(null);
       const messageListenerRef = useRef(null);
@@ -157,7 +158,11 @@
           (position) => {
             // Success - check if in allowed location
             const { latitude, longitude } = position.coords;
+            console.log('Detected coordinates:', latitude, longitude);
+            console.log('Allowed bounds:', ALLOWED_LOCATION);
+            setDebugCoords({ lat: latitude, lng: longitude });
             const verified = isInAllowedLocation(latitude, longitude);
+            console.log('Is in allowed location:', verified);
             setLocationStatus('granted');
             createNewUser(todayKey, storageKey, verified);
           },
@@ -263,6 +268,21 @@
           setError('Failed to send message. Please try again.');
           console.error('Send message error:', err);
         }
+      };
+
+      const resetIdentity = () => {
+        // Clear localStorage for today
+        const todayKey = getTodayKey();
+        const storageKey = `wildchat_user_${todayKey}`;
+        localStorage.removeItem(storageKey);
+        
+        // Remove presence
+        if (presenceRef.current) {
+          presenceRef.current.remove();
+        }
+        
+        // Reload page
+        window.location.reload();
       };
 
       const onlineCount = Object.keys(onlineUsers).length;
@@ -393,7 +413,16 @@
 
           {/* Footer */}
           <div className="max-w-4xl mx-auto px-4 py-4 text-center text-gray-400 text-xs w-full">
-            <p>MC Wildchat • Marin Catholic Chatroom</p>
+            <p>MC Wildchat • Global chat for Marin Catholic students</p>
+            {debugCoords && (
+              <p className="mt-1">Debug: Detected location {debugCoords.lat.toFixed(4)}, {debugCoords.lng.toFixed(4)}</p>
+            )}
+            <button 
+              onClick={resetIdentity}
+              className="mt-2 text-blue-500 hover:text-blue-700 underline"
+            >
+              Reset Identity (for testing)
+            </button>
           </div>
         </div>
       );
