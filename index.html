@@ -109,7 +109,8 @@
       const [isMuted, setIsMuted] = useState(false);
       const [isVideoMuted, setIsVideoMuted] = useState(false);
       const [remoteStreamActive, setRemoteStreamActive] = useState(false);
-      const [isUser1, setIsUser1] = useState(false); // Track if this user is user1 (the caller)
+      const [isUser1, setIsUser1] = useState(false);
+      const [localStreamReady, setLocalStreamReady] = useState(false);
       
       const messagesEndRef = useRef(null);
       const listenerRef = useRef(null);
@@ -121,7 +122,7 @@
       const localStreamRef = useRef(null);
       const callRef = useRef(null);
       const peerIdListenerRef = useRef(null);
-      const hasInitiatedCall = useRef(false); // Prevent multiple call attempts
+      const hasInitiatedCall = useRef(false);
 
       const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -130,6 +131,14 @@
       useEffect(() => {
         scrollToBottom();
       }, [messages]);
+
+      // Attach local stream when video element is ready
+      useEffect(() => {
+        if (localStreamReady && localVideoRef.current && localStreamRef.current) {
+          localVideoRef.current.srcObject = localStreamRef.current;
+          localVideoRef.current.play().catch(e => console.log('Local video play:', e));
+        }
+      }, [localStreamReady]);
 
       // Cleanup on unmount
       useEffect(() => {
@@ -192,7 +201,6 @@
           if (session.user1 === currentUserId || session.user2 === currentUserId) {
             console.log('I am in this session! Moving to matched state');
             
-            // Determine if this user is user1 (the caller) or user2 (the answerer)
             const amIUser1 = session.user1 === currentUserId;
             setIsUser1(amIUser1);
             console.log('Am I user1 (caller)?', amIUser1);
@@ -220,31 +228,25 @@
           peerRef.current.destroy();
         }
 
-        // Create peer with random ID
         peerRef.current = new Peer();
 
         peerRef.current.on('open', (peerId) => {
           console.log('My peer ID is:', peerId);
           
-          // Store peer ID in Firebase under this user's ID
           database.ref(`sessions/${sid}/peers/${currentUserId}`).set(peerId);
 
-          // Only user1 listens for partner's peer ID to initiate call
-          // user2 will only answer incoming calls
           if (amIUser1) {
             const peersRef = database.ref(`sessions/${sid}/peers`);
             const peerListener = peersRef.on('value', (snapshot) => {
               const peers = snapshot.val() || {};
               console.log('All peers:', peers);
               
-              // Find partner's peer ID (user2's peer ID)
               const partnerUserId = Object.keys(peers).find(uid => uid !== currentUserId);
               
               if (partnerUserId && !hasInitiatedCall.current) {
                 const partnerPeerId = peers[partnerUserId];
                 console.log('Partner (user2) peer ID found:', partnerPeerId);
                 
-                // If we have a local stream, initiate call
                 if (localStreamRef.current) {
                   console.log('User1 calling user2 with peer ID:', partnerPeerId);
                   hasInitiatedCall.current = true;
@@ -259,7 +261,6 @@
           }
         });
 
-        // Handle incoming calls (primarily for user2, but user1 should also handle just in case)
         peerRef.current.on('call', (call) => {
           console.log('Receiving incoming call');
           
@@ -286,7 +287,6 @@
             });
           } else {
             console.log('No local stream to answer with - will answer when stream is ready');
-            // Store the call to answer later when we have a stream
             callRef.current = call;
           }
         });
@@ -340,11 +340,14 @@
           
           console.log('Got local stream');
           localStreamRef.current = stream;
-          if (localVideoRef.current) {
-            localVideoRef.current.srcObject = stream;
-          }
           
+          // First set video active (this renders the video elements)
           setIsVideoActive(true);
+          
+          // Then signal that stream is ready (useEffect will attach it)
+          setTimeout(() => {
+            setLocalStreamReady(true);
+          }, 100);
 
           // If there's a pending incoming call (user2 scenario), answer it now
           if (callRef.current && !callRef.current.open) {
@@ -413,6 +416,7 @@
         hasInitiatedCall.current = false;
         setIsVideoActive(false);
         setRemoteStreamActive(false);
+        setLocalStreamReady(false);
       };
 
       const toggleMute = () => {
@@ -450,7 +454,6 @@
             const newSessionId = database.ref('sessions').push().key;
             console.log('Creating session:', newSessionId, 'between', currentUserId, 'and', partnerId);
             
-            // currentUserId becomes user1 (the caller), partnerId becomes user2 (the answerer)
             const session = {
               user1: currentUserId,
               user2: partnerId,
@@ -592,6 +595,15 @@
           return () => clearInterval(interval);
         }
       }, [status]);
+
+      // Callback ref for local video to attach stream when element mounts
+      const setLocalVideoRef = (element) => {
+        localVideoRef.current = element;
+        if (element && localStreamRef.current) {
+          element.srcObject = localStreamRef.current;
+          element.play().catch(e => console.log('Local video play on mount:', e));
+        }
+      };
 
       return (
         <div className="min-h-screen bg-white">
@@ -736,7 +748,7 @@
                       </div>
                       <div className="relative bg-gray-900 rounded-lg overflow-hidden aspect-video">
                         <video 
-                          ref={localVideoRef} 
+                          ref={setLocalVideoRef}
                           autoPlay 
                           muted 
                           playsInline
