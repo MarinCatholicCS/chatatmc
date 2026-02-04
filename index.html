@@ -19,6 +19,19 @@
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
 
+    // ===========================================
+    // CONFIGURATION - Edit allowed location here
+    // ===========================================
+    const ALLOWED_LOCATION = {
+      name: "California",
+      // Bounding box for California (approximate)
+      minLat: 32.5,
+      maxLat: 42.0,
+      minLng: -124.5,
+      maxLng: -114.0
+    };
+    // ===========================================
+
     // Firebase Configuration
     const firebaseConfig = {
         apiKey: "AIzaSyDvT_GPef-lLPD2X86xM2MLSTl7s7OQfKg",
@@ -44,38 +57,50 @@
       </svg>
     );
 
-    const Clock = ({ className }) => (
+    const MapPin = ({ className }) => (
       <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
       </svg>
     );
 
-    const LogOut = ({ className }) => (
+    const Users = ({ className }) => (
       <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
       </svg>
     );
 
-    const Refresh = ({ className }) => (
-      <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-      </svg>
-    );
+    // Helper to get today's date string
+    const getTodayKey = () => {
+      const now = new Date();
+      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    };
 
-    function AnonymousMatcher() {
-      const [status, setStatus] = useState('disconnected');
+    // Check if coordinates are within allowed location
+    const isInAllowedLocation = (lat, lng) => {
+      return (
+        lat >= ALLOWED_LOCATION.minLat &&
+        lat <= ALLOWED_LOCATION.maxLat &&
+        lng >= ALLOWED_LOCATION.minLng &&
+        lng <= ALLOWED_LOCATION.maxLng
+      );
+    };
+
+    function GlobalChat() {
+      const [status, setStatus] = useState('init'); // init, requesting_location, ready
       const [userId, setUserId] = useState(null);
-      const [sessionId, setSessionId] = useState(null);
+      const [username, setUsername] = useState(null);
+      const [isVerified, setIsVerified] = useState(false);
       const [messages, setMessages] = useState([]);
       const [messageInput, setMessageInput] = useState('');
-      const [waitingCount, setWaitingCount] = useState(0);
       const [error, setError] = useState(null);
-      const [partnerDisconnected, setPartnerDisconnected] = useState(false);
+      const [onlineUsers, setOnlineUsers] = useState({});
+      const [locationStatus, setLocationStatus] = useState('pending'); // pending, granted, denied
       
       const messagesEndRef = useRef(null);
-      const listenerRef = useRef(null);
-      const sessionListenerRef = useRef(null);
-      const hasAddedDisconnectMessage = useRef(false);
+      const messageListenerRef = useRef(null);
+      const usersListenerRef = useRef(null);
+      const presenceRef = useRef(null);
 
       const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -85,126 +110,123 @@
         scrollToBottom();
       }, [messages]);
 
-      // Cleanup on unmount
+      // Initialize user on mount
       useEffect(() => {
+        initializeUser();
+        
         return () => {
-          if (listenerRef.current) {
-            listenerRef.current();
-          }
-          if (sessionListenerRef.current) {
-            sessionListenerRef.current();
+          // Cleanup listeners
+          if (messageListenerRef.current) messageListenerRef.current();
+          if (usersListenerRef.current) usersListenerRef.current();
+          // Remove presence on unmount
+          if (presenceRef.current) {
+            presenceRef.current.remove();
           }
         };
       }, []);
 
-      const generateUserId = () => {
-        return 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      const initializeUser = async () => {
+        const todayKey = getTodayKey();
+        const storageKey = `wildchat_user_${todayKey}`;
+        
+        // Check if user already has an identity for today
+        const storedUser = localStorage.getItem(storageKey);
+        
+        if (storedUser) {
+          const userData = JSON.parse(storedUser);
+          setUserId(userData.userId);
+          setUsername(userData.username);
+          setIsVerified(userData.isVerified);
+          setStatus('ready');
+          setupChat(userData.userId, userData.username);
+        } else {
+          // Request geolocation for new user
+          setStatus('requesting_location');
+          requestGeolocation(todayKey, storageKey);
+        }
       };
 
-      const joinQueue = async () => {
-        try {
-          setError(null);
-          setPartnerDisconnected(false);
-          hasAddedDisconnectMessage.current = false;
-          setMessages([]);
-          const newUserId = generateUserId();
-          setUserId(newUserId);
-          console.log('My User ID:', newUserId);
+      const requestGeolocation = (todayKey, storageKey) => {
+        if (!navigator.geolocation) {
+          // Geolocation not supported, mark as unverified
+          createNewUser(todayKey, storageKey, false);
+          return;
+        }
 
-          await database.ref(`waiting/${newUserId}`).set({
-            timestamp: firebase.database.ServerValue.TIMESTAMP,
-            status: 'waiting'
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            // Success - check if in allowed location
+            const { latitude, longitude } = position.coords;
+            const verified = isInAllowedLocation(latitude, longitude);
+            setLocationStatus('granted');
+            createNewUser(todayKey, storageKey, verified);
+          },
+          (error) => {
+            // Denied or error - mark as unverified
+            console.log('Geolocation error:', error);
+            setLocationStatus('denied');
+            createNewUser(todayKey, storageKey, false);
+          },
+          {
+            enableHighAccuracy: false,
+            timeout: 10000,
+            maximumAge: 300000 // 5 minutes cache
+          }
+        );
+      };
+
+      const createNewUser = async (todayKey, storageKey, verified) => {
+        try {
+          // Get next user number for today using a transaction
+          const counterRef = database.ref(`counters/${todayKey}`);
+          
+          const result = await counterRef.transaction((currentCount) => {
+            return (currentCount || 0) + 1;
           });
-          console.log('Added to waiting pool');
 
-          setStatus('waiting');
+          const userNumber = result.snapshot.val();
+          const newUserId = `user_${todayKey}_${userNumber}`;
+          const newUsername = verified ? `Wildcat${userNumber}` : 'Fake Wildcat';
           
-          listenForMatch(newUserId);
+          // Store in localStorage
+          const userData = {
+            userId: newUserId,
+            username: newUsername,
+            isVerified: verified,
+            userNumber: userNumber,
+            createdAt: Date.now()
+          };
+          localStorage.setItem(storageKey, JSON.stringify(userData));
           
-          setTimeout(() => {
-            attemptMatching(newUserId);
-          }, 500);
+          setUserId(newUserId);
+          setUsername(newUsername);
+          setIsVerified(verified);
+          setStatus('ready');
+          setupChat(newUserId, newUsername);
+          
         } catch (err) {
-          setError('Failed to join queue. Please try again.');
-          console.error('Join queue error:', err);
+          console.error('Error creating user:', err);
+          setError('Failed to join chat. Please refresh the page.');
         }
       };
 
-      const listenForMatch = (currentUserId) => {
-        console.log('Setting up match listener for:', currentUserId);
-        const sessionsRef = database.ref('sessions');
-        const listener = sessionsRef.on('child_added', (snapshot) => {
-          const session = snapshot.val();
-          const sid = snapshot.key;
-          console.log('Session created:', sid, session);
-          
-          if (session.user1 === currentUserId || session.user2 === currentUserId) {
-            console.log('I am in this session! Moving to matched state');
-            
-            setSessionId(sid);
-            setStatus('matched');
-            setPartnerDisconnected(false);
-            hasAddedDisconnectMessage.current = false;
-            sessionsRef.off('child_added', listener);
-            listenForMessages(sid);
-          } else {
-            console.log('This session is not for me');
-          }
+      const setupChat = (uid, uname) => {
+        // Setup presence
+        const userPresenceRef = database.ref(`presence/${uid}`);
+        presenceRef.current = userPresenceRef;
+        
+        userPresenceRef.set({
+          username: uname,
+          online: true,
+          lastSeen: firebase.database.ServerValue.TIMESTAMP
         });
-
-        listenerRef.current = () => sessionsRef.off('child_added', listener);
-      };
-
-      const attemptMatching = async (currentUserId) => {
-        try {
-          console.log('Attempting to match for:', currentUserId);
-          const waitingSnapshot = await database.ref('waiting').once('value');
-          const waiting = waitingSnapshot.val() || {};
-          console.log('Users in waiting pool:', Object.keys(waiting));
-          
-          const otherUsers = Object.keys(waiting).filter(id => id !== currentUserId);
-          console.log('Other users available:', otherUsers);
-          
-          if (otherUsers.length > 0) {
-            const partnerId = otherUsers[0];
-            const newSessionId = database.ref('sessions').push().key;
-            console.log('Creating session:', newSessionId, 'between', currentUserId, 'and', partnerId);
-            
-            const session = {
-              user1: currentUserId,
-              user2: partnerId,
-              createdAt: firebase.database.ServerValue.TIMESTAMP,
-              messages: {}
-            };
-
-            await Promise.all([
-              database.ref(`sessions/${newSessionId}`).set(session),
-              database.ref(`waiting/${currentUserId}`).remove(),
-              database.ref(`waiting/${partnerId}`).remove()
-            ]);
-            console.log('Session created and users removed from waiting');
-          } else {
-            console.log('No other users to match with');
-            updateWaitingCount();
-          }
-        } catch (err) {
-          console.error('Matching error:', err);
-        }
-      };
-
-      const updateWaitingCount = async () => {
-        try {
-          const snapshot = await database.ref('waiting').once('value');
-          const waiting = snapshot.val() || {};
-          setWaitingCount(Object.keys(waiting).length);
-        } catch (err) {
-          console.error('Count error:', err);
-        }
-      };
-
-      const listenForMessages = (sid) => {
-        const messagesRef = database.ref(`sessions/${sid}/messages`);
-        const listener = messagesRef.on('value', (snapshot) => {
+        
+        // Remove presence on disconnect
+        userPresenceRef.onDisconnect().remove();
+        
+        // Listen for messages (last 100)
+        const messagesRef = database.ref('globalChat/messages').orderByChild('timestamp').limitToLast(100);
+        const msgListener = messagesRef.on('value', (snapshot) => {
           const messagesData = snapshot.val() || {};
           const messagesList = Object.entries(messagesData).map(([id, msg]) => ({
             id,
@@ -212,35 +234,26 @@
           })).sort((a, b) => a.timestamp - b.timestamp);
           setMessages(messagesList);
         });
-
-        const sessionRef = database.ref(`sessions/${sid}`);
-        const sessionListener = sessionRef.on('value', (snapshot) => {
-          if (!snapshot.exists()) {
-            console.log('Session deleted - partner disconnected');
-            if (!hasAddedDisconnectMessage.current) {
-              hasAddedDisconnectMessage.current = true;
-              setMessages(prev => [...prev, {
-                id: 'disconnect_' + Date.now(),
-                sender: 'system',
-                text: 'Wildcat has disconnected',
-                timestamp: Date.now()
-              }]);
-              setPartnerDisconnected(true);
-            }
-          }
+        messageListenerRef.current = () => messagesRef.off('value', msgListener);
+        
+        // Listen for online users
+        const presenceListRef = database.ref('presence');
+        const presenceListener = presenceListRef.on('value', (snapshot) => {
+          const presenceData = snapshot.val() || {};
+          setOnlineUsers(presenceData);
         });
-
-        listenerRef.current = () => messagesRef.off('value', listener);
-        sessionListenerRef.current = () => sessionRef.off('value', sessionListener);
+        usersListenerRef.current = () => presenceListRef.off('value', presenceListener);
       };
 
       const sendMessage = async () => {
-        if (!messageInput.trim() || !sessionId || partnerDisconnected) return;
+        if (!messageInput.trim() || !userId) return;
 
         try {
-          const newMessageRef = database.ref(`sessions/${sessionId}/messages`).push();
+          const newMessageRef = database.ref('globalChat/messages').push();
           await newMessageRef.set({
-            sender: userId,
+            senderId: userId,
+            senderName: username,
+            isVerified: isVerified,
             text: messageInput,
             timestamp: firebase.database.ServerValue.TIMESTAMP
           });
@@ -252,59 +265,37 @@
         }
       };
 
-      const leaveSession = async () => {
-        try {
-          if (listenerRef.current) {
-            listenerRef.current();
-          }
-          if (sessionListenerRef.current) {
-            sessionListenerRef.current();
-          }
+      const onlineCount = Object.keys(onlineUsers).length;
 
-          if (status === 'waiting' && userId) {
-            await database.ref(`waiting/${userId}`).remove();
-          }
-          
-          if (status === 'matched' && sessionId && !partnerDisconnected) {
-            await database.ref(`sessions/${sessionId}/messages`).push({
-              sender: 'system',
-              text: 'Wildcat has disconnected',
-              timestamp: firebase.database.ServerValue.TIMESTAMP
-            });
-            
-            setTimeout(async () => {
-              await database.ref(`sessions/${sessionId}`).remove();
-            }, 500);
-          }
-          
-          setStatus('disconnected');
-          setUserId(null);
-          setSessionId(null);
-          setError(null);
-        } catch (err) {
-          console.error('Leave session error:', err);
-        }
-      };
-
-      const matchAgain = async () => {
-        await leaveSession();
-        setTimeout(() => {
-          joinQueue();
-        }, 500);
-      };
-
-      useEffect(() => {
-        if (status === 'waiting') {
-          const interval = setInterval(updateWaitingCount, 3000);
-          return () => clearInterval(interval);
-        }
-      }, [status]);
+      // Loading / Location request screen
+      if (status === 'init' || status === 'requesting_location') {
+        return (
+          <div className="min-h-screen bg-white flex items-center justify-center">
+            <div className="text-center p-8">
+              <div className="inline-block bg-blue-50 rounded-full p-6 mb-6">
+                <MapPin className="w-16 h-16 text-blue-900" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-4">
+                {status === 'init' ? 'Loading...' : 'Requesting Location'}
+              </h2>
+              <p className="text-gray-600 mb-4">
+                Please allow location access to verify you're a real Wildcat.
+              </p>
+              <div className="flex justify-center gap-2">
+                <div className="w-3 h-3 bg-blue-900 rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
+                <div className="w-3 h-3 bg-blue-900 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                <div className="w-3 h-3 bg-blue-900 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+              </div>
+            </div>
+          </div>
+        );
+      }
 
       return (
-        <div className="min-h-screen bg-white">
+        <div className="min-h-screen bg-white flex flex-col">
           {/* Header */}
           <div className="bg-blue-900 shadow-md">
-            <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="bg-white rounded-lg p-2">
                   <img src="auth/mclogo.png" alt="MC Logo" className="w-6 h-6 object-contain" />
@@ -314,193 +305,101 @@
                   <p className="text-blue-200 text-sm">Do your homework.</p>
                 </div>
               </div>
-              {status !== 'disconnected' && (
-                <button
-                  onClick={partnerDisconnected ? matchAgain : leaveSession}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors font-semibold ${
-                    partnerDisconnected 
-                      ? 'bg-blue-300 text-blue-900 hover:bg-blue-200' 
-                      : 'bg-white text-blue-900 hover:bg-blue-50'
-                  }`}
-                >
-                  {partnerDisconnected ? (
-                    <>
-                      <Refresh className="w-4 h-4" />
-                      Match Again
-                    </>
-                  ) : (
-                    <>
-                      <LogOut className="w-4 h-4" />
-                      Disconnect
-                    </>
-                  )}
-                </button>
-              )}
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 text-white">
+                  <Users className="w-5 h-5" />
+                  <span className="font-semibold">{onlineCount} online</span>
+                </div>
+                <div className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                  isVerified 
+                    ? 'bg-green-500 text-white' 
+                    : 'bg-yellow-500 text-yellow-900'
+                }`}>
+                  {username}
+                </div>
+              </div>
             </div>
           </div>
 
           {error && (
-            <div className="max-w-6xl mx-auto px-4 mt-4">
+            <div className="max-w-4xl mx-auto px-4 mt-4 w-full">
               <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
                 {error}
               </div>
             </div>
           )}
 
-          {/* Main Content */}
-          <div className="max-w-6xl mx-auto px-4 py-6">
-            {status === 'disconnected' && (
-              <div className="text-center py-16">
-                <div className="mb-8">
-                  <div className="inline-block bg-blue-50 rounded-full p-6 mb-4">
-                    <img src="auth/mclogo.png" alt="MC Logo" className="w-16 h-16 object-contain" />
+          {/* Chat Area */}
+          <div className="flex-1 max-w-4xl mx-auto px-4 py-6 w-full flex flex-col">
+            <div className="flex-1 border-2 border-gray-300 rounded-lg overflow-hidden bg-white flex flex-col">
+              {/* Messages Area */}
+              <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
+                {messages.length === 0 ? (
+                  <div className="text-center text-gray-400 py-12">
+                    <MessageCircle className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <p>No messages yet. Be the first to say hi!</p>
                   </div>
-                  <h2 className="text-3xl font-bold text-gray-800 mb-2">MC Wildchat</h2>
-                  <p className="text-gray-600 text-lg">"Nothing beside remains"</p>
-                </div>
-                
-                <button
-                  onClick={joinQueue}
-                  className="px-12 py-4 bg-blue-900 text-white text-xl rounded-lg hover:bg-blue-800 transition-colors font-bold shadow-lg"
-                >
-                  Start Chatting
-                </button>
-                
-                <div className="mt-8 text-gray-500 text-sm">
-                  <p>Click "Start Chatting" to be matched with a random wildcat!</p>
-                </div>
-              </div>
-            )}
-
-            {status === 'waiting' && (
-              <div className="text-center py-16">
-                <div className="mb-6">
-                  <Clock className="w-20 h-20 text-blue-900 mx-auto mb-4 animate-pulse" />
-                </div>
-                <h2 className="text-2xl font-semibold text-gray-800 mb-2">Looking for a wildcat...</h2>
-                <p className="text-gray-600">
-                  {waitingCount > 1 ? `${waitingCount} users online` : 'Waiting for someone to connect'}
-                </p>
-                <div className="mt-8">
-                  <div className="inline-block">
-                    <div className="flex gap-2">
-                      <div className="w-3 h-3 bg-blue-900 rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
-                      <div className="w-3 h-3 bg-blue-900 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
-                      <div className="w-3 h-3 bg-blue-900 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {status === 'matched' && (
-              <div>
-                <div className={`border-l-4 p-4 mb-6 ${
-                  partnerDisconnected 
-                    ? 'bg-gray-50 border-gray-400' 
-                    : 'bg-green-50 border-green-500'
-                }`}>
-                  <div className="flex items-center gap-2">
-                    <div className={`w-3 h-3 rounded-full ${
-                      partnerDisconnected 
-                        ? 'bg-gray-400' 
-                        : 'bg-green-500 animate-pulse'
-                    }`}></div>
-                    <span className={`font-semibold ${
-                      partnerDisconnected 
-                        ? 'text-gray-600' 
-                        : 'text-green-700'
-                    }`}>
-                      {partnerDisconnected 
-                        ? 'Wildcat has left the chat' 
-                        : "You're now chatting with another wildcat"}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Chat Box */}
-                <div className="border-2 border-gray-300 rounded-lg overflow-hidden bg-white">
-                  {/* Messages Area */}
-                  <div className="h-96 overflow-y-auto p-4 bg-gray-50">
-                    {messages.length === 0 ? (
-                      <div className="text-center text-gray-400 py-12">
-                        <MessageCircle className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                        <p>Say hi to start the conversation!</p>
+                ) : (
+                  <div className="space-y-3">
+                    {messages.map((msg) => (
+                      <div key={msg.id} className="text-sm">
+                        <span className={`font-bold ${
+                          msg.senderId === userId 
+                            ? 'text-blue-900' 
+                            : msg.isVerified 
+                              ? 'text-green-700' 
+                              : 'text-yellow-600'
+                        }`}>
+                          {msg.senderId === userId ? 'You' : msg.senderName}:
+                        </span>
+                        <span className="text-gray-800 ml-2">{msg.text}</span>
                       </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {messages.map((msg) => (
-                          <div key={msg.id} className="text-sm">
-                            {msg.sender === 'system' ? (
-                              <div className="text-center text-gray-500 italic py-2">
-                                {msg.text}
-                              </div>
-                            ) : (
-                              <>
-                                <span className={`font-bold ${msg.sender === userId ? 'text-blue-900' : 'text-red-600'}`}>
-                                  {msg.sender === userId ? 'You' : 'Wildcat'}:
-                                </span>
-                                <span className="text-gray-800 ml-2">{msg.text}</span>
-                              </>
-                            )}
-                          </div>
-                        ))}
-                        <div ref={messagesEndRef} />
-                      </div>
-                    )}
+                    ))}
+                    <div ref={messagesEndRef} />
                   </div>
+                )}
+              </div>
 
-                  {/* Input Area */}
-                  <div className="border-t-2 border-gray-300 bg-white p-4">
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={messageInput}
-                        onChange={(e) => setMessageInput(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-                        placeholder={partnerDisconnected ? "Partner disconnected..." : "Type your message here..."}
-                        disabled={partnerDisconnected}
-                        className={`flex-1 px-4 py-3 border-2 border-gray-300 rounded focus:outline-none focus:border-blue-900 text-base ${
-                          partnerDisconnected ? 'bg-gray-100 cursor-not-allowed' : ''
-                        }`}
-                      />
-                      <button
-                        onClick={sendMessage}
-                        disabled={partnerDisconnected}
-                        className={`px-8 py-3 rounded font-semibold transition-colors ${
-                          partnerDisconnected 
-                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
-                            : 'bg-blue-900 text-white hover:bg-blue-800'
-                        }`}
-                      >
-                        Send
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Bottom Info */}
-                <div className="mt-4 text-center text-gray-500 text-sm">
-                  <p>
-                    {partnerDisconnected 
-                      ? 'Click "Match Again" to find a new wildcat' 
-                      : 'Click "Disconnect" to end this chat and find a new wildcat'}
-                  </p>
+              {/* Input Area */}
+              <div className="border-t-2 border-gray-300 bg-white p-4">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={messageInput}
+                    onChange={(e) => setMessageInput(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                    placeholder="Type your message here..."
+                    className="flex-1 px-4 py-3 border-2 border-gray-300 rounded focus:outline-none focus:border-blue-900 text-base"
+                  />
+                  <button
+                    onClick={sendMessage}
+                    className="px-8 py-3 rounded font-semibold transition-colors bg-blue-900 text-white hover:bg-blue-800"
+                  >
+                    Send
+                  </button>
                 </div>
               </div>
-            )}
+            </div>
+
+            {/* Info */}
+            <div className="mt-4 text-center text-gray-500 text-sm">
+              <p>
+                {isVerified 
+                  ? `You're chatting as ${username}` 
+                  : "You're chatting as Fake Wildcat (location not verified)"}
+              </p>
+            </div>
           </div>
 
           {/* Footer */}
-          <div className="max-w-6xl mx-auto px-4 py-8 text-center text-gray-400 text-xs">
-            <p>MC Wildchat • Chatting for Marin Catholic students</p>
-            <p className="mt-2">Your chats are anonymous and temporary</p>
+          <div className="max-w-4xl mx-auto px-4 py-4 text-center text-gray-400 text-xs w-full">
+            <p>MC Wildchat • Marin Catholic Chatroom</p>
           </div>
         </div>
       );
     }
 
-    ReactDOM.render(<AnonymousMatcher />, document.getElementById('root'));
+    ReactDOM.render(<GlobalChat />, document.getElementById('root'));
   </script>
 </body>
 </html>
