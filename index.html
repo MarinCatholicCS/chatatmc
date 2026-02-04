@@ -136,7 +136,8 @@
       const createNewUser = async (todayKey, storageKey) => {
         try {
           const newUserId = `user_${todayKey}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-          const newUsername = generateRandomName();
+          // const newUsername = generateRandomName();
+          const newUsername = "Wildcat" + Math.random().toString();
           
           // Store in localStorage
           const userData = {
