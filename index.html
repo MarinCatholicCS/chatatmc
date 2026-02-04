@@ -30,6 +30,10 @@
       minLng: -125.0,
       maxLng: -113.5
     };
+    
+    // Secret verification code for when geolocation fails
+    // Change this to whatever you want to share with real students
+    const VERIFICATION_CODE = "iran";
     // ===========================================
 
     // Firebase Configuration
@@ -97,6 +101,10 @@
       const [onlineUsers, setOnlineUsers] = useState({});
       const [locationStatus, setLocationStatus] = useState('pending'); // pending, granted, denied
       const [debugCoords, setDebugCoords] = useState(null);
+      const [showCodePrompt, setShowCodePrompt] = useState(false);
+      const [codeInput, setCodeInput] = useState('');
+      const [pendingStorageKey, setPendingStorageKey] = useState(null);
+      const [pendingTodayKey, setPendingTodayKey] = useState(null);
       
       const messagesEndRef = useRef(null);
       const messageListenerRef = useRef(null);
@@ -138,6 +146,10 @@
           setUserId(userData.userId);
           setUsername(userData.username);
           setIsVerified(userData.isVerified);
+          // Load stored coordinates if available
+          if (userData.coords) {
+            setDebugCoords(userData.coords);
+          }
           setStatus('ready');
           setupChat(userData.userId, userData.username);
         } else {
@@ -150,7 +162,7 @@
       const requestGeolocation = (todayKey, storageKey) => {
         if (!navigator.geolocation) {
           // Geolocation not supported, mark as unverified
-          createNewUser(todayKey, storageKey, false);
+          createNewUser(todayKey, storageKey, false, null);
           return;
         }
 
@@ -158,19 +170,22 @@
           (position) => {
             // Success - check if in allowed location
             const { latitude, longitude } = position.coords;
+            const coords = { lat: latitude, lng: longitude };
             console.log('Detected coordinates:', latitude, longitude);
             console.log('Allowed bounds:', ALLOWED_LOCATION);
-            setDebugCoords({ lat: latitude, lng: longitude });
+            setDebugCoords(coords);
             const verified = isInAllowedLocation(latitude, longitude);
             console.log('Is in allowed location:', verified);
             setLocationStatus('granted');
-            createNewUser(todayKey, storageKey, verified);
+            createNewUser(todayKey, storageKey, verified, coords);
           },
           (error) => {
-            // Denied or error - mark as unverified
+            // Denied or error - show code prompt for manual verification
             console.log('Geolocation error:', error);
             setLocationStatus('denied');
-            createNewUser(todayKey, storageKey, false);
+            setPendingStorageKey(storageKey);
+            setPendingTodayKey(todayKey);
+            setShowCodePrompt(true);
           },
           {
             enableHighAccuracy: false,
@@ -180,7 +195,7 @@
         );
       };
 
-      const createNewUser = async (todayKey, storageKey, verified) => {
+      const createNewUser = async (todayKey, storageKey, verified, coords) => {
         try {
           // Get next user number for today using a transaction
           const counterRef = database.ref(`counters/${todayKey}`);
@@ -199,6 +214,7 @@
             username: newUsername,
             isVerified: verified,
             userNumber: userNumber,
+            coords: coords,
             createdAt: Date.now()
           };
           localStorage.setItem(storageKey, JSON.stringify(userData));
@@ -285,6 +301,17 @@
         window.location.reload();
       };
 
+      const handleCodeSubmit = () => {
+        const isValid = codeInput.toUpperCase().trim() === VERIFICATION_CODE;
+        createNewUser(pendingTodayKey, pendingStorageKey, isValid, null);
+        setShowCodePrompt(false);
+      };
+
+      const skipVerification = () => {
+        createNewUser(pendingTodayKey, pendingStorageKey, false, null);
+        setShowCodePrompt(false);
+      };
+
       const onlineCount = Object.keys(onlineUsers).length;
 
       // Loading / Location request screen
@@ -306,6 +333,45 @@
                 <div className="w-3 h-3 bg-blue-900 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
                 <div className="w-3 h-3 bg-blue-900 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
               </div>
+            </div>
+          </div>
+        );
+      }
+
+      // Code verification prompt when geolocation fails
+      if (showCodePrompt) {
+        return (
+          <div className="min-h-screen bg-white flex items-center justify-center">
+            <div className="text-center p-8 max-w-md">
+              <div className="inline-block bg-yellow-50 rounded-full p-6 mb-6">
+                <MapPin className="w-16 h-16 text-yellow-600" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-4">
+                Location Unavailable
+              </h2>
+              <p className="text-gray-600 mb-6">
+                We couldn't verify your location. Enter the Wildcat verification code to prove you're a real student:
+              </p>
+              <input
+                type="text"
+                value={codeInput}
+                onChange={(e) => setCodeInput(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleCodeSubmit()}
+                placeholder="Enter verification code"
+                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg mb-4 text-center text-lg uppercase focus:outline-none focus:border-blue-900"
+              />
+              <button
+                onClick={handleCodeSubmit}
+                className="w-full px-6 py-3 bg-blue-900 text-white rounded-lg font-semibold hover:bg-blue-800 transition-colors mb-3"
+              >
+                Verify
+              </button>
+              <button
+                onClick={skipVerification}
+                className="text-gray-500 hover:text-gray-700 text-sm underline"
+              >
+                Continue as Fake Wildcat
+              </button>
             </div>
           </div>
         );
@@ -421,7 +487,7 @@
               onClick={resetIdentity}
               className="mt-2 text-blue-500 hover:text-blue-700 underline"
             >
-              Reset Identity (for testing)
+              Reset Identity
             </button>
           </div>
         </div>
