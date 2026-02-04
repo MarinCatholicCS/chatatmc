@@ -91,7 +91,7 @@
     };
 
     function GlobalChat() {
-      const [status, setStatus] = useState('init'); // init, requesting_location, ready
+      const [status, setStatus] = useState('init'); // init, choose_method, requesting_location, enter_code, ready
       const [userId, setUserId] = useState(null);
       const [username, setUsername] = useState(null);
       const [isVerified, setIsVerified] = useState(false);
@@ -101,10 +101,9 @@
       const [onlineUsers, setOnlineUsers] = useState({});
       const [locationStatus, setLocationStatus] = useState('pending'); // pending, granted, denied
       const [debugCoords, setDebugCoords] = useState(null);
-      const [showCodePrompt, setShowCodePrompt] = useState(false);
       const [codeInput, setCodeInput] = useState('');
-      const [pendingStorageKey, setPendingStorageKey] = useState(null);
-      const [pendingTodayKey, setPendingTodayKey] = useState(null);
+      const [storageKey, setStorageKey] = useState(null);
+      const [todayKey, setTodayKey] = useState(null);
       
       const messagesEndRef = useRef(null);
       const messageListenerRef = useRef(null);
@@ -135,11 +134,13 @@
       }, []);
 
       const initializeUser = async () => {
-        const todayKey = getTodayKey();
-        const storageKey = `wildchat_user_${todayKey}`;
+        const today = getTodayKey();
+        const storage = `wildchat_user_${today}`;
+        setTodayKey(today);
+        setStorageKey(storage);
         
         // Check if user already has an identity for today
-        const storedUser = localStorage.getItem(storageKey);
+        const storedUser = localStorage.getItem(storage);
         
         if (storedUser) {
           const userData = JSON.parse(storedUser);
@@ -153,16 +154,24 @@
           setStatus('ready');
           setupChat(userData.userId, userData.username);
         } else {
-          // Request geolocation for new user
-          setStatus('requesting_location');
-          requestGeolocation(todayKey, storageKey);
+          // Show verification method choice
+          setStatus('choose_method');
         }
       };
 
-      const requestGeolocation = (todayKey, storageKey) => {
+      const chooseLocation = () => {
+        setStatus('requesting_location');
+        requestGeolocation();
+      };
+
+      const chooseCode = () => {
+        setStatus('enter_code');
+      };
+
+      const requestGeolocation = () => {
         if (!navigator.geolocation) {
-          // Geolocation not supported, mark as unverified
-          createNewUser(todayKey, storageKey, false, null);
+          // Geolocation not supported, fall back to code entry
+          setStatus('enter_code');
           return;
         }
 
@@ -177,15 +186,13 @@
             const verified = isInAllowedLocation(latitude, longitude);
             console.log('Is in allowed location:', verified);
             setLocationStatus('granted');
-            createNewUser(todayKey, storageKey, verified, coords);
+            createNewUser(verified, coords);
           },
           (error) => {
-            // Denied or error - show code prompt for manual verification
+            // Denied or error - fall back to code entry
             console.log('Geolocation error:', error);
             setLocationStatus('denied');
-            setPendingStorageKey(storageKey);
-            setPendingTodayKey(todayKey);
-            setShowCodePrompt(true);
+            setStatus('enter_code');
           },
           {
             enableHighAccuracy: false,
@@ -195,7 +202,7 @@
         );
       };
 
-      const createNewUser = async (todayKey, storageKey, verified, coords) => {
+      const createNewUser = async (verified, coords) => {
         try {
           // Get next user number for today using a transaction
           const counterRef = database.ref(`counters/${todayKey}`);
@@ -303,30 +310,85 @@
 
       const handleCodeSubmit = () => {
         const isValid = codeInput.toUpperCase().trim() === VERIFICATION_CODE;
-        createNewUser(pendingTodayKey, pendingStorageKey, isValid, null);
-        setShowCodePrompt(false);
+        createNewUser(isValid, null);
       };
 
       const skipVerification = () => {
-        createNewUser(pendingTodayKey, pendingStorageKey, false, null);
-        setShowCodePrompt(false);
+        createNewUser(false, null);
       };
 
       const onlineCount = Object.keys(onlineUsers).length;
 
-      // Loading / Location request screen
-      if (status === 'init' || status === 'requesting_location') {
+      // Initial loading screen
+      if (status === 'init') {
+        return (
+          <div className="min-h-screen bg-white flex items-center justify-center">
+            <div className="text-center p-8">
+              <div className="inline-block bg-blue-50 rounded-full p-6 mb-6">
+                <img src="auth/mclogo.png" alt="MC Logo" className="w-16 h-16 object-contain" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-4">Loading...</h2>
+              <div className="flex justify-center gap-2">
+                <div className="w-3 h-3 bg-blue-900 rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
+                <div className="w-3 h-3 bg-blue-900 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                <div className="w-3 h-3 bg-blue-900 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // Verification method choice screen
+      if (status === 'choose_method') {
+        return (
+          <div className="min-h-screen bg-white flex items-center justify-center">
+            <div className="text-center p-8 max-w-md">
+              <div className="inline-block bg-blue-50 rounded-full p-6 mb-6">
+                <img src="auth/mclogo.png" alt="MC Logo" className="w-16 h-16 object-contain" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">Welcome to MC Wildchat</h2>
+              <p className="text-gray-600 mb-8">Choose how to verify you're a real Wildcat:</p>
+              
+              <button
+                onClick={chooseLocation}
+                className="w-full px-6 py-4 bg-blue-900 text-white rounded-lg font-semibold hover:bg-blue-800 transition-colors mb-4 flex items-center justify-center gap-3"
+              >
+                <MapPin className="w-5 h-5" />
+                Use My Location
+              </button>
+              
+              <button
+                onClick={chooseCode}
+                className="w-full px-6 py-4 bg-gray-100 text-gray-800 rounded-lg font-semibold hover:bg-gray-200 transition-colors mb-6 flex items-center justify-center gap-3"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                Enter Verification Code
+              </button>
+              
+              <button
+                onClick={skipVerification}
+                className="text-gray-500 hover:text-gray-700 text-sm underline"
+              >
+                Continue without verification
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      // Requesting location screen
+      if (status === 'requesting_location') {
         return (
           <div className="min-h-screen bg-white flex items-center justify-center">
             <div className="text-center p-8">
               <div className="inline-block bg-blue-50 rounded-full p-6 mb-6">
                 <MapPin className="w-16 h-16 text-blue-900" />
               </div>
-              <h2 className="text-2xl font-bold text-gray-800 mb-4">
-                {status === 'init' ? 'Loading...' : 'Requesting Location'}
-              </h2>
+              <h2 className="text-2xl font-bold text-gray-800 mb-4">Requesting Location</h2>
               <p className="text-gray-600 mb-4">
-                Please allow location access to verify you're a real Wildcat.
+                Please allow location access to verify you're in California.
               </p>
               <div className="flex justify-center gap-2">
                 <div className="w-3 h-3 bg-blue-900 rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
@@ -338,26 +400,26 @@
         );
       }
 
-      // Code verification prompt when geolocation fails
-      if (showCodePrompt) {
+      // Code entry screen
+      if (status === 'enter_code') {
         return (
           <div className="min-h-screen bg-white flex items-center justify-center">
             <div className="text-center p-8 max-w-md">
-              <div className="inline-block bg-yellow-50 rounded-full p-6 mb-6">
-                <MapPin className="w-16 h-16 text-yellow-600" />
+              <div className="inline-block bg-blue-50 rounded-full p-6 mb-6">
+                <svg className="w-16 h-16 text-blue-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
               </div>
-              <h2 className="text-2xl font-bold text-gray-800 mb-4">
-                Location Unavailable
-              </h2>
+              <h2 className="text-2xl font-bold text-gray-800 mb-4">Enter Verification Code</h2>
               <p className="text-gray-600 mb-6">
-                We couldn't verify your location. Enter the Wildcat verification code to prove you're a real student:
+                Enter the Wildcat verification code to prove you're a real student:
               </p>
               <input
                 type="text"
                 value={codeInput}
                 onChange={(e) => setCodeInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleCodeSubmit()}
-                placeholder="Enter verification code"
+                placeholder="Enter code"
                 className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg mb-4 text-center text-lg uppercase focus:outline-none focus:border-blue-900"
               />
               <button
@@ -487,7 +549,7 @@
               onClick={resetIdentity}
               className="mt-2 text-blue-500 hover:text-blue-700 underline"
             >
-              Reset Identity
+              Reset Identity (for testing)
             </button>
           </div>
         </div>
