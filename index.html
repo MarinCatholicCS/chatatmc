@@ -22,37 +22,46 @@
     // Profanity filter word list (add more as needed)
     const BLOCKED_WORDS = [
       // Slurs and offensive terms
-      "nigger", "nigga", "faggot", "fag", "retard", "retarded"
+      "nigger", "nigga", "faggot", "fag", "retard", "retarded",
+      // bad words
+      "fuck",
     ];
 
+    function levenshteinDistance(a, b) {
+    const matrix = [];
+
+    for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+    for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+
+    for (let i = 1; i <= b.length; i++) {
+        for (let j = 1; j <= a.length; j++) {
+            if (b[i - 1] === a[j - 1]) {
+                matrix[i][j] = matrix[i - 1][j - 1];
+            } else {
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j] + 1,    // deletion
+                    matrix[i][j - 1] + 1,    // insertion
+                    matrix[i - 1][j - 1] + 1 // substitution
+                );
+            }
+        }
+    }
+
+    return matrix[b.length][a.length];
+}
+
     // Check if message contains blocked words
-    const containsProfanity = (text) => {
+    function containsProfanity(text, levenshteinAllowance = 1) {
+    const words = sentence.toLowerCase().split(/\s+/);
 
-      for (let i = 0; i < BLOCKED_WORDS.length; i++) {
-        if (text.includes(BLOCKED_WORDS[i])) {
-          return true;
+    for (let word of text) {
+        for (let blocked of BLOCKED_WORDS) {
+            if (word === blocked) return true; // exact match
+            if (levenshteinDistance(word, blocked) <= levenshteinAllowance) return true; // fuzzy match
         }
-      }
-
-      return false;
-
-
-      const lowerText = text.toLowerCase().replace(/[^a-z0-9]/g, '');
-      for (const word of BLOCKED_WORDS) {
-        const cleanWord = word.toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (lowerText.includes(cleanWord)) {
-          return true;
-        }
-      }
-      // Also check the original text with spaces
-      const lowerOriginal = text.toLowerCase();
-      for (const word of BLOCKED_WORDS) {
-        if (lowerOriginal.includes(word.toLowerCase())) {
-          return true;
-        }
-      }
-      return false;
-    };
+    }
+    return false;
+}
 
     // Firebase Configuration
     const firebaseConfig = {
