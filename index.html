@@ -98,7 +98,7 @@
     };
 
     // Generate avatar URL for user using DiceBear
-    const getAvatarUrl = (oderId, style = 'adventurer') => {
+    const getAvatarUrl = (oderId, style = 'bottts') => {
       // Available styles: adventurer, avataaars, big-ears, bottts, croodles, fun-emoji, icons, identicon, lorelei, micah, miniavs, notionists, open-peeps, personas, pixel-art, thumbs
       return `https://api.dicebear.com/7.x/${style}/svg?seed=${encodeURIComponent(oderId)}`;
     };
