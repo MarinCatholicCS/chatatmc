@@ -29,7 +29,9 @@
     const containsProfanity = (text) => {
 
       for (const word of BLOCKED_WORDS) {
-        text.includes(word);
+        if (text.includes(word)) {
+          return true;
+        }
       }
 
       return false;
