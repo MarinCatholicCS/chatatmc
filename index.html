@@ -28,8 +28,8 @@
     // Check if message contains blocked words
     const containsProfanity = (text) => {
 
-      for (const word of BLOCKED_WORDS) {
-        if (text.includes(word)) {
+      for (let i = 0; i < BLOCKED_WORDS.length; i++) {
+        if (text.includes(BLOCKED_WORDS[i])) {
           return true;
         }
       }
